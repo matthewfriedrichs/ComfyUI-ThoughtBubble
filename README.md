@@ -14,6 +14,8 @@ ThoughtBubble is a custom node for ComfyUI that provides an interactive canvas t
 
 ---
 
+![Thought Bubble](./assets/thoughtbubblescreenshot.png)
+
 ## **Installation**
 
 1. Navigate to your `ComfyUI/custom_nodes/` directory.  
