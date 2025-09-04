@@ -19,7 +19,7 @@ ThoughtBubble is a custom node for ComfyUI that provides an interactive canvas t
 ## **Installation**
 
 1. Navigate to your `ComfyUI/custom_nodes/` directory.  
-2. Clone this repository: `git clone <your-repository-url>`  
+2. Clone this repository: `git clone https://github.com/matthewfriedrichs/ComfyUI-ThoughtBubble.git`
 3. Restart ComfyUI.
 
 ---
