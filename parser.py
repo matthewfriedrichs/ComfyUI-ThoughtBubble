@@ -18,6 +18,7 @@ class CanvasParser:
         self.hidden_end_marker = "###/H###"
         self.is_forcing = False
         self.loras_to_load = []
+        self.areas_to_apply = [] # New: To track which area boxes to use
 
     def _find_matching_paren(self, text, start_index):
         depth = 1
@@ -47,102 +48,74 @@ class CanvasParser:
         tokens = []
         cursor = 0
         while cursor < len(text):
-            v_match = re.search(r'\b[vV]\s*\(', text[cursor:])
-            m_match = re.search(r'-\s*\(', text[cursor:])
-            s_if_match = re.search(r'\?\s*\(', text[cursor:])
-            m_if_match = re.search(r'\?\?\s*\(', text[cursor:])
-            h_match = re.search(r'\b[hH]\s*\(', text[cursor:])
-            f_match = re.search(r'\b[fF]\s*\(', text[cursor:])
-            lora_match = re.search(r'\b(lora|lra)\s*\(', text[cursor:], re.IGNORECASE)
-            wildcard_match = re.search(r'\b[wW]\s*\(', text[cursor:])
-            random_match = re.search(r'\b[rR]\s*\(', text[cursor:])
+            # Added area command 'a(' to the regex search
+            searches = {
+                'V_COMMAND': re.search(r'\b[vV]\s*\(', text[cursor:]),
+                'NEG_COMMAND': re.search(r'-\s*\(', text[cursor:]),
+                'IF_COMMAND': re.search(r'\?\s*\(', text[cursor:]),
+                'MULTI_IF_COMMAND': re.search(r'\?\?\s*\(', text[cursor:]),
+                'HIDDEN_COMMAND': re.search(r'\b[hH]\s*\(', text[cursor:]),
+                'FORCE_COMMAND': re.search(r'\b[fF]\s*\(', text[cursor:]),
+                'LORA_COMMAND': re.search(r'\b(lora|lra)\s*\(', text[cursor:], re.IGNORECASE),
+                'WILDCARD_COMMAND': re.search(r'\b[wW]\s*\(', text[cursor:]),
+                'RANDOM_COMMAND': re.search(r'\b[rR]\s*\(', text[cursor:]),
+                'AREA_COMMAND': re.search(r'\b[aA]\s*\(', text[cursor:]), # New Area Command
+            }
             
-            v_pos, m_pos, s_if_pos, m_if_pos, h_pos, f_pos, lora_pos, w_pos, r_pos = -1,-1,-1,-1,-1,-1,-1,-1,-1
-            if v_match: v_pos = v_match.start() + cursor
-            if m_match: m_pos = m_match.start() + cursor
-            if s_if_match: s_if_pos = s_if_match.start() + cursor
-            if m_if_match: m_if_pos = m_if_match.start() + cursor
-            if h_match: h_pos = h_match.start() + cursor
-            if f_match: f_pos = f_match.start() + cursor
-            if lora_match: lora_pos = lora_match.start() + cursor
-            if wildcard_match: w_pos = wildcard_match.start() + cursor
-            if random_match: r_pos = random_match.start() + cursor
-
-            if s_if_pos == m_if_pos: s_if_pos = -1
+            # Find the first upcoming command
+            first_pos = float('inf')
+            first_kind = None
+            for kind, match in searches.items():
+                if match and (match.start() + cursor) < first_pos:
+                    first_pos = match.start() + cursor
+                    first_kind = kind
             
-            positions = [p for p in [v_pos, m_pos, s_if_pos, m_if_pos, h_pos, f_pos, lora_pos, w_pos, r_pos] if p != -1]
-            
-            if not positions:
+            if first_kind is None:
                 if cursor < len(text): tokens.append(Token('LITERAL', text[cursor:]))
                 break
-            
-            start_index = min(positions)
-            if start_index > cursor:
-                tokens.append(Token('LITERAL', text[cursor:start_index]))
-            
-            paren_start = text.find('(', start_index)
+
+            # Add the literal text before the command
+            if first_pos > cursor:
+                tokens.append(Token('LITERAL', text[cursor:first_pos]))
+
+            # Process the found command
+            paren_start = text.find('(', first_pos)
             paren_end = self._find_matching_paren(text, paren_start)
             if paren_end == -1:
-                tokens.append(Token('LITERAL', text[start_index:]))
+                tokens.append(Token('LITERAL', text[first_pos:]))
                 break
-            
-            if start_index == m_if_pos: command_type = 'MULTI_IF_COMMAND'
-            elif start_index == s_if_pos: command_type = 'IF_COMMAND'
-            elif start_index == h_pos: command_type = 'HIDDEN_COMMAND'
-            elif start_index == f_pos: command_type = 'FORCE_COMMAND'
-            elif start_index == lora_pos: command_type = 'LORA_COMMAND'
-            elif start_index == w_pos: command_type = 'WILDCARD_COMMAND'
-            elif start_index == r_pos: command_type = 'RANDOM_COMMAND'
-            elif start_index == v_pos: command_type = 'V_COMMAND'
-            else: command_type = 'NEG_COMMAND'
-            
+
             command_content = text[paren_start + 1 : paren_end]
-            tokens.append(Token(command_type, command_content))
+            tokens.append(Token(first_kind, command_content))
             cursor = paren_end + 1
+            
         return tokens
 
     def _parse_random_command(self, content):
         """
         Parses the random command r() to generate a random number.
-        - r(max) -> random number between 0 and max.
-        - r(min|max) -> random number between min and max.
-        Type (int/float) is inferred from the input.
         """
         parts = content.split('|')
-        
         try:
             if len(parts) == 1:
-                # Single argument: r(max), range is [0, max]
                 max_val_str = parts[0].strip()
                 if not max_val_str: raise ValueError("Max value cannot be empty.")
-                
-                if '.' in max_val_str:
-                    max_val = float(max_val_str)
-                    return str(self.rng.uniform(0.0, max_val))
-                else:
-                    max_val = int(max_val_str)
-                    return str(self.rng.randint(0, max_val))
-
+                if '.' in max_val_str: return str(self.rng.uniform(0.0, float(max_val_str)))
+                else: return str(self.rng.randint(0, int(max_val_str)))
             elif len(parts) == 2:
-                # Two arguments: r(min|max)
-                min_val_str = parts[0].strip()
-                max_val_str = parts[1].strip()
+                min_val_str, max_val_str = parts[0].strip(), parts[1].strip()
                 if not min_val_str or not max_val_str: raise ValueError("Min or max value cannot be empty.")
-                
                 if '.' in min_val_str or '.' in max_val_str:
-                    min_val = float(min_val_str)
-                    max_val = float(max_val_str)
+                    min_val, max_val = float(min_val_str), float(max_val_str)
                     if min_val > max_val: min_val, max_val = max_val, min_val
                     return str(self.rng.uniform(min_val, max_val))
                 else:
-                    min_val = int(min_val_str)
-                    max_val = int(max_val_str)
+                    min_val, max_val = int(min_val_str), int(max_val_str)
                     if min_val > max_val: min_val, max_val = max_val, min_val
                     return str(self.rng.randint(min_val, max_val))
             else:
                 print(f"Thought Bubble Warning: Invalid number of arguments for random command: 'r({content})'")
                 return f"r({content})"
-
         except (ValueError, IndexError):
             print(f"Thought Bubble Warning: Could not parse numbers in random command: 'r({content})'.")
             return f"r({content})"
@@ -150,10 +123,8 @@ class CanvasParser:
     def _parse_wildcard_command(self, content, used_sections):
         """
         Selects a random item from a wildcard file or an inline list.
-        Handles nested commands and recursive resolution.
         """
         options = self._split_toplevel_options(content)
-        
         if len(options) > 1:
             chosen_option = self.rng.choice(options).strip()
             return self._resolve_text(chosen_option, used_sections)
@@ -163,17 +134,13 @@ class CanvasParser:
             if len(final_options) > 1:
                 chosen_final_option = self.rng.choice(final_options).strip()
                 return self._resolve_text(chosen_final_option, used_sections)
-
             wildcard_name = resolved_content.strip().lower()
             if wildcard_name in self.wildcards:
                 lines = self.wildcards[wildcard_name]
                 if lines:
-                    chosen_line = self.rng.choice(lines)
-                    return self._resolve_text(chosen_line, used_sections)
-            
+                    return self._resolve_text(self.rng.choice(lines), used_sections)
             print(f"Thought Bubble Warning: Wildcard file '{wildcard_name}.txt' not found or is empty.")
             return f"w({content})"
-
 
     def _parse_lora_command(self, content):
         """
@@ -182,33 +149,25 @@ class CanvasParser:
         try:
             parts = content.split(':')
             name = parts[0].strip()
-            model_strength_str = "1.0"
-            clip_strength_str = "1.0"
-
-            if len(parts) == 2:
-                model_strength_str = parts[1]
-                clip_strength_str = model_strength_str # Use same strength for clip
-            elif len(parts) == 3:
-                model_strength_str = parts[1]
-                clip_strength_str = parts[2]
-            elif len(parts) > 3:
-                # Handle cases where the LoRA name itself might contain colons
-                name = ":".join(parts[:-2]).strip()
-                model_strength_str = parts[-2]
-                clip_strength_str = parts[-1]
-            else:
-                # This covers len(parts) == 1, which is just the name with default strength
-                pass
+            model_strength_str, clip_strength_str = "1.0", "1.0"
+            if len(parts) == 2: model_strength_str = clip_strength_str = parts[1]
+            elif len(parts) >= 3:
+                name = ":".join(parts[:-2]).strip() if len(parts) > 3 else parts[0].strip()
+                model_strength_str, clip_strength_str = parts[-2], parts[-1]
+            
             resolved_model_strength = self._resolve_text(model_strength_str.strip(), set())
             resolved_clip_strength = self._resolve_text(clip_strength_str.strip(), set())
-
-            model_strength = float(resolved_model_strength)
-            clip_strength = float(resolved_clip_strength)
-            
-            self.loras_to_load.append((name, model_strength, clip_strength))
+            self.loras_to_load.append((name, float(resolved_model_strength), float(resolved_clip_strength)))
         except (ValueError, IndexError) as e:
             print(f"Thought Bubble Warning: Malformed lora command: '{content}'. Error: {e}")
         return ""
+
+    def _parse_area_command(self, content):
+        """ Registers an area box to be applied later, preserving order. """
+        area_title = content.strip().lower()
+        if area_title:
+            self.areas_to_apply.append(area_title)
+        return "" # This command produces no text output
 
     def _parse_force_command(self, content, used_sections):
         self.is_forcing = True
@@ -225,7 +184,7 @@ class CanvasParser:
         return self._resolve_text(true_text if condition_met else false_text, used_sections)
 
     def _parse_multi_if_command(self, content, context, used_sections):
-        sections, triggered_outputs = content.split('|'), []
+        sections, triggered_outputs = self._split_toplevel_options(content), []
         for section in sections:
             parts = section.split(':', 1)
             if len(parts) != 2: continue
@@ -288,11 +247,13 @@ class CanvasParser:
             elif kind == 'LORA_COMMAND': resolved_parts.append(self._parse_lora_command(value))
             elif kind == 'WILDCARD_COMMAND': resolved_parts.append(self._parse_wildcard_command(value, used_sections))
             elif kind == 'RANDOM_COMMAND': resolved_parts.append(self._parse_random_command(value))
+            elif kind == 'AREA_COMMAND': resolved_parts.append(self._parse_area_command(value))
         return "".join(resolved_parts)
 
     def parse(self, text):
         self.used_multi_if_sections = set()
         self.loras_to_load = []
+        self.areas_to_apply = [] 
         current_text = text
         for _ in range(20):
             resolved_text = self._resolve_text(current_text, self.used_multi_if_sections)
@@ -303,3 +264,4 @@ class CanvasParser:
         final_text = hidden_pattern.sub('', current_text)
         pos, neg = self._split_prompt(final_text)
         return pos, neg
+
