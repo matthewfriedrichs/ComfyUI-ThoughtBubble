@@ -37,6 +37,7 @@ class ThoughtBubbleNode:
         return {
             "required": {
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "iterator": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "step": 1, "control_after_generate": "increment"}),
                 "canvas_data": ("STRING", {
                     "multiline": True,
                     "default": json.dumps(default_state),
@@ -74,7 +75,7 @@ class ThoughtBubbleNode:
         except Exception as e:
             print(f"Thought Bubble Error loading wildcards: {e}")
 
-    def process_data(self, canvas_data, seed, model=None, clip=None):
+    def process_data(self, canvas_data, seed, iterator, model=None, clip=None):
         """
         Processes the canvas data to produce text prompts and conditioning,
         now including support for area conditioning boxes.
@@ -114,7 +115,7 @@ class ThoughtBubbleNode:
             if raw_prompt_source:
                 rng = random.Random()
                 rng.seed(seed)
-                parser = CanvasParser(box_map, self.WILDCARD_CACHE, rng)
+                parser = CanvasParser(box_map, self.WILDCARD_CACHE, rng, iterator)
                 positive_prompt, negative_prompt = parser.parse(raw_prompt_source)
                 
                 if model is not None and clip is not None and parser.loras_to_load:
@@ -211,4 +212,3 @@ class ThoughtBubbleNode:
                 final_conditioning.append([cond_tensor, cond_dict])
 
         return final_conditioning
-

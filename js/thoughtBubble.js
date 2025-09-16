@@ -70,7 +70,7 @@ app.registerExtension({
             }
             /* New CSS for Area Conditioning Box */
             .area-conditioning { padding: 4px; gap: 4px; }
-            .area-box { min-width: 500px; min-height: 500px; } /* <<< CORRECTED THIS RULE */
+            .area-box { min-width: 500px; min-height: 500px; }
             .ac-toolbar { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; height: auto; min-height: 30px; }
             .ac-toolbar label { font-size: 12px; }
             .ac-toolbar input { width: 50px; background-color: #282828; border: 1px solid #222; color: #ccc; }
@@ -117,7 +117,7 @@ app.registerExtension({
             originalOnDrawForeground?.apply(this, arguments);
             
             if (canvasWidget) {
-                const desiredTop = 160;
+                const desiredTop = 220;
                 const actualTop = Math.round(canvasWidget.last_y);
                 const correction = desiredTop - actualTop;
                 widgetContainer.style.transform = `translateY(${correction}px)`;
@@ -128,7 +128,7 @@ app.registerExtension({
                 renderer.render();
             }
             if (node.size[1] !== lastKnownNodeHeight) {
-                const availableHeight = Math.round(node.size[1]) - TITLE_HEIGHT - 160;
+                const availableHeight = Math.round(node.size[1]) - TITLE_HEIGHT - 220;
                 widgetContainer.style.height = `${Math.max(0, availableHeight)}px`;
                 lastKnownNodeHeight = node.size[1];
                 renderer.render();
