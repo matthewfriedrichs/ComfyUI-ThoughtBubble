@@ -18,6 +18,9 @@ ThoughtBubble is a custom node for ComfyUI that provides an interactive canvas t
 ---
 
 ![Thought Bubble](./assets/thoughtbubblescreenshot.png)
+![Basic Example](./assets/BasicSDXLIterationExample.png)
+
+The above example image uses a 2D array to loop through 9 possible prompts. Conditional commands are use to parse the selected prompt from the text array to further control the output.
 
 ## **Installation**
 
