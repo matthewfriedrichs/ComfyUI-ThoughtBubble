@@ -8,7 +8,8 @@ ThoughtBubble is a custom node for ComfyUI that provides an interactive canvas t
 
 * **Visual Prompting**: Ditch the single text box. Create, move, and resize "thought bubbles" on an infinite canvas.
 * **Dynamic Commands**: Use a simple yet powerful command syntax to reference other boxes, create negative prompts, use wildcards, and even implement conditional logic.
-* **Sequential Iteration**: A new `iterator` widget on the node allows you to step through lists sequentially across multiple generations.
+* **Custom Variables & Controls**: Create "Controls" boxes to define your own stateful variables. Set their behavior (increment, decrement, randomize, fixed value) and link them to commands for advanced sequential and conditional prompting.
+* **Sequential Iteration**: step through lists sequentially across multiple generations using the run counter or a variable from a control box.
 * **LoRA Autocomplete**: The editor will automatically suggest LoRA names as you type `lora(...)`.
 * **Wildcard Support**: Integrates with a `user/wildcards` directory to pull random lines from your own text files.
 * **Seedable Randomness**: The `seed` input on the node ensures that any random choices (from wildcards or random number generation) are repeatable.
@@ -29,7 +30,7 @@ ThoughtBubble is a custom node for ComfyUI that provides an interactive canvas t
 ## **How to Use**
 
 1.  Add the **ThoughtBubble** node to your workflow (it can be found in the "Workflow Efficiency" category).
-2.  Note the **seed** and **iterator** widgets on the node. The iterator is designed to change value on each run (e.g., increment), allowing you to use the `i()` command for sequential prompting.
+2.  Note the **seed** and **iterator** widgets on the node. The main iterator is designed to change value on each run (e.g., increment), allowing you to use the `i()` command for sequential prompting.
 3.  The node provides a large canvas widget. You can:
     * **Create a box**: Left-click and drag on an empty area of the canvas, or double-click to open a creation menu.
     * **Move a box**: Click and drag the header of any box.
@@ -37,6 +38,10 @@ ThoughtBubble is a custom node for ComfyUI that provides an interactive canvas t
     * **Pan the canvas**: Middle-click (or scroll-wheel click) and drag.
     * **Zoom**: Use the scroll wheel.
 4.  By default, the content of the box titled "**output**" will be used to generate the final prompt. You can also maximize any other box to use its content as the source instead.
+5.  **Use the Controls Box for Advanced Logic**:
+    * Create a "Controls" box from the creation menu (double-click on the canvas).
+    * Click "+ Add Variable" to create a new variable. Give it a unique name, set its behavior (e.g., "Increment"), and provide a starting value.
+    * In any text box, type `i()` or `w()`. A dropdown menu will appear, allowing you to link the command to one of your custom variables. The variable's behavior will now control the output of that command on each generation.
 
 ---
 
@@ -65,16 +70,18 @@ This command moves text from the positive prompt to the negative prompt.
 
 ### **`w(wildcard)` - Wildcard (Random)**
 
-Selects a **random** line from either an inline list or a file in your `ComfyUI/user/wildcards` folder. This is controlled by the `seed` widget.
+Selects a **random** line from either an inline list or a file in your `ComfyUI/user/wildcards` folder. By default, this is controlled by the main `seed` widget on the node.
 
 * **Syntax (Inline List)**: `w(option1 | option2 | option3)`
 * **Syntax (File)**: `w(filename_without_extension)`
+
+**Linking Variables**: You can override the default random seed behavior by linking this command to a variable from a "Controls" box. Simply type `w(` and a dropdown will appear, listing all available variables. If you link a variable with "Randomize" behavior, a new random seed will be generated for this command on each run. You can also link variables with "Fixed", "Increment", or "Decrement" behavior to select items from the list by a specific index.
 
 ---
 
 ### **`i(wildcard)` - Iterator (Sequential)**
 
-Selects an item from a list **sequentially** using the node's `iterator` widget. For each new generation, the iterator's value changes, letting you step through a list. It loops back to the start automatically. This is perfect for "prompt traveling" or creating animations.
+Selects an item from a list **sequentially**. By default, it uses the node's main `iterator` widget, which increments on each run. It loops back to the start automatically. This is perfect for "prompt traveling" or creating animations.
 
 #### **1D Iteration (Simple Lists)**
 * **Syntax (Inline List)**: `i(option1 | option2 | option3)`
@@ -92,6 +99,8 @@ You can define multiple dimensions of lists to generate every possible combinati
     * **Iterator 2:** "a dog, with green fur"
     * **Iterator 3:** "a dog, with orange fur"
     * **Iterator 4:** Loops back to the beginning.
+
+**Linking Variables**: You can override the default iterator behavior by linking this command to a variable from a "Controls" box. Type `i(` and a dropdown will appear, listing all available variables. This allows you to have multiple, independent iterators in your prompt, each with its own state (e.g., one variable increments, another decrements, and a third stays fixed).
 
 ---
 
