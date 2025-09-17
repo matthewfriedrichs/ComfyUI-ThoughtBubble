@@ -24,22 +24,27 @@ export class StateManager {
                 x: 100, y: 100, width: 400, height: 300, displayState: "normal",
             }],
             pan: { x: 0, y: 0 }, zoom: 1.0, gridSize: 100, showGrid: true, savedView: null,
+            iterator: 0,
         };
         try {
-            this.state = Object.assign({}, defaultState, JSON.parse(this.dataWidget.value));
+            const loadedState = JSON.parse(this.dataWidget.value);
+            this.state = Object.assign({}, defaultState, loadedState);
         } catch (e) {
             this.state = defaultState;
             console.error("Failed to parse ThoughtBubble state, resetting to default:", e);
         }
-        this.lastKnownValue = JSON.stringify(this.state);
-        this.dataWidget.value = this.lastKnownValue;
+        this.save(); // Immediately save after load to clean the state
     }
 
     save() {
-        if (this.state.cursorOffsetX) delete this.state.cursorOffsetX;
-        if (this.state.cursorOffsetY) delete this.state.cursorOffsetY;
+        const replacer = (key, value) => {
+            if (key === 'instance') {
+                return undefined;
+            }
+            return value;
+        };
         
-        const newValue = JSON.stringify(this.state);
+        const newValue = JSON.stringify(this.state, replacer);
         this.dataWidget.value = newValue;
         this.lastKnownValue = newValue;
     }

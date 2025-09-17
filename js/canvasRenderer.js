@@ -39,15 +39,15 @@ export class CanvasRenderer {
     }
 
     drawBox(box) {
-    const state = this.stateManager.state;
-    let { x, y, width, height, displayState } = box;
+        const state = this.stateManager.state;
+        let { x, y, width, height, displayState } = box;
 
-    if (displayState === "maximized") {
-        x = -state.pan.x / state.zoom;
-        y = (-state.pan.y + TOOLBAR_HEIGHT) / state.zoom;
-        width = this.canvasEl.clientWidth / state.zoom;
-        height = (this.canvasEl.clientHeight - TOOLBAR_HEIGHT) / state.zoom;
-    }
+        if (displayState === "maximized") {
+            x = -state.pan.x / state.zoom;
+            y = (-state.pan.y + TOOLBAR_HEIGHT) / state.zoom;
+            width = this.canvasEl.clientWidth / state.zoom;
+            height = (this.canvasEl.clientHeight - TOOLBAR_HEIGHT) / state.zoom;
+        }
 
         const boxEl = document.createElement("div");
         boxEl.className = `thought-bubble-box ${displayState || 'normal'} ${box.type || 'text'}-box`;
@@ -97,8 +97,14 @@ export class CanvasRenderer {
                 boxData: box,
                 fullState: this.stateManager.state,
                 requestSave: () => this.stateManager.save(),
-                setLastActiveTextarea: (textarea) => { this.lastActiveTextarea = textarea; }
+                setLastActiveTextarea: (textarea) => { this.lastActiveTextarea = textarea; },
+                canvasEl: this.canvasEl
             });
+
+            // --- FIX: Store a reference to the class instance on the box data ---
+            // This is crucial for the update logic to find the live instance of the box.
+            box.instance = boxInstance;
+            
             boxInstance.render(contentEl);
         } else {
             console.warn(`ThoughtBubble: Unknown box type "${box.type}"`);

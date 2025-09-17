@@ -1,9 +1,5 @@
 // js/canvasEvents.js
 
-/**
- * Constants for operation types.
- * @enum {string}
- */
 const OP_TYPES = {
     PAN: 'pan',
     DRAG: 'drag',
@@ -11,10 +7,6 @@ const OP_TYPES = {
     DRAG_CREATE: 'drag-create',
 };
 
-/**
- * Constants for CSS selectors.
- * @enum {string}
- */
 const SELECTORS = {
     BOX: '.thought-bubble-box',
     HEADER: '.thought-bubble-box-header',
@@ -32,10 +24,6 @@ export class CanvasEvents {
         this.stateManager = stateManager;
         this.activeOperation = null;
 
-        /**
-         * A map of handlers for different active operations (e.g., pan, drag).
-         * This avoids large switch/if statements in mouse move/up handlers.
-         */
         this.operationHandlers = {
             [OP_TYPES.PAN]: {
                 move: this._handlePanMove.bind(this),
@@ -57,8 +45,6 @@ export class CanvasEvents {
         
         this._init();
     }
-
-    // --- Initialization ---
 
     _init() {
         this._addEventListeners();
@@ -83,8 +69,6 @@ export class CanvasEvents {
         this.renderer.contextMenu.addEventListener('mousedown', this._handleMenuClick.bind(this));
     }
 
-    // --- Coordinate Utilities ---
-
     _getCanvasMousePosition(e) {
         const rect = this.canvasEl.getBoundingClientRect();
         const scaleX = this.canvasEl.offsetWidth > 0 ? rect.width / this.canvasEl.offsetWidth : 1;
@@ -102,8 +86,6 @@ export class CanvasEvents {
             y: (canvasPos.y - pan.y) / zoom
         };
     }
-
-    // --- Global Event Dispatchers ---
 
     _handleGlobalMouseMove(e) {
         if (!this.activeOperation) return;
@@ -123,8 +105,6 @@ export class CanvasEvents {
         this.activeOperation = null;
         this.canvasEl.style.cursor = '';
     }
-
-    // --- Top-Level Event Handlers ---
 
     _handleCanvasMouseDown(e) {
         this.renderer.hideCreationMenu();
@@ -166,24 +146,18 @@ export class CanvasEvents {
         const box = this.stateManager.getBoxById(boxEl.dataset.boxId);
         if (!box) return;
 
-        // First, check for a resize handle click, which is a specific, non-header action.
         if (e.target.classList.contains(SELECTORS.RESIZE_HANDLE.substring(1))) {
             this._startResize(e, box, boxEl);
-            return; // Action is handled, so we can exit.
+            return;
         }
         
-        // Next, check if the click was anywhere inside the header.
-        // All other actions (dragging, button clicks) happen here.
         if (e.target.closest(SELECTORS.HEADER)) {
             
-            // Check if a button inside the header was the specific target.
             if (e.target.closest('button')) {
                 this._handleHeaderButtonClick(e, box);
             }
-            // Otherwise, the click was on the general header area, so attempt a drag.
             else {
                 const titleInput = boxEl.querySelector(SELECTORS.TITLE);
-                // A drag can only start if the title isn't being edited (i.e., it's readOnly).
                 if (titleInput?.readOnly) {
                     this._startDrag(e, box, boxEl);
                 }
@@ -228,8 +202,6 @@ export class CanvasEvents {
         this.renderer.render();
     }
 
-    // --- Title Editing Handlers ---
-
     _handleTitleDblClick(e) {
         const titleInput = e.target;
         if (!titleInput.classList.contains(SELECTORS.TITLE.substring(1))) return;
@@ -258,8 +230,6 @@ export class CanvasEvents {
             e.target.blur();
         }
     }
-
-    // --- Operation Start Methods ---
 
     _startPan(e) {
         e.stopPropagation();
@@ -309,8 +279,6 @@ export class CanvasEvents {
         this.activeOperation = { type: OP_TYPES.DRAG_CREATE, startCoords, selectionBoxEl };
     }
 
-    // --- Operation Move/Up Handlers ---
-
     _handlePanMove(e) {
         const { startMouse, startPan } = this.activeOperation;
         const mouse = this._getCanvasMousePosition(e);
@@ -326,7 +294,6 @@ export class CanvasEvents {
         const op = this.activeOperation;
         const mouse = this._getCanvasMousePosition(e);
         
-        // Drag dead zone to prevent accidental drags on click
         if (!op.isDragging) {
             const dx = mouse.x - op.startMouse.x;
             const dy = mouse.y - op.startMouse.y;
@@ -365,8 +332,28 @@ export class CanvasEvents {
         const dx = (mouse.x - startMouse.x) / zoom;
         const dy = (mouse.y - startMouse.y) / zoom;
         
-        box.width = Math.max(150, startSize.w + dx);
-        box.height = Math.max(80, startSize.h + dy);
+        let minWidth = 150;
+        let minHeight = 80;
+
+        switch(box.type) {
+            case 'area':
+                minWidth = 500;
+                minHeight = 500;
+                break;
+            case 'controls':
+                minWidth = 300;
+                minHeight = 200;
+                break;
+            case 'text':
+            default:
+                minWidth = 200;
+                minHeight = 100;
+                break;
+        }
+        
+        box.width = Math.max(minWidth, startSize.w + dx);
+        box.height = Math.max(minHeight, startSize.h + dy);
+
         boxEl.style.width = box.width + 'px';
         boxEl.style.height = box.height + 'px';
     }
@@ -415,13 +402,10 @@ export class CanvasEvents {
     }
 
     _handleOperationEnd() {
-        // A generic handler for operations that don't need special cleanup on mouseUp.
         this.stateManager.save();
         this.renderer.render();
         this._endOperation();
     }
-
-    // --- Box State Actions ---
 
     _toggleMinimize(box) {
         if (box.displayState === "minimized") {

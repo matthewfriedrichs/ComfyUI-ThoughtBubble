@@ -8,7 +8,7 @@ export class Toolbar {
         this.stateManager = stateManager;
         this.renderer = renderer;
         this.modal = new ThoughtBubbleModal();
-        this._isLoading = false; // To prevent duplicate save/load actions
+        this._isLoading = false;
 
         this._init();
     }
@@ -16,18 +16,36 @@ export class Toolbar {
     _init() {
         this.toolbarEl.innerHTML = ''; // Clear existing content
         
-        // Create and store buttons for easy access later
         this.saveButton = this._createButton("Save", () => this.handleSave());
         this.loadButton = this._createButton("Load", () => this.handleLoad());
         const fitViewButton = this._createButton("Fit View", () => this.fitViewToContent());
         
         const { gridLabel, gridSelect } = this._createGridSizeSelector();
         const toggleGridButton = this._createToggleGridButton();
+        
+        const iteratorControl = this._createIteratorControl();
 
-        this.toolbarEl.append(this.saveButton, this.loadButton, fitViewButton, gridLabel, gridSelect, toggleGridButton);
+        this.toolbarEl.append(this.saveButton, this.loadButton, fitViewButton, iteratorControl, gridLabel, gridSelect, toggleGridButton);
     }
 
-    // --- UI Creation Helpers ---
+    _createIteratorControl() {
+        const container = document.createElement("div");
+        container.style.cssText = "display: flex; align-items: center; gap: 8px; margin-left: auto;";
+
+        this.iteratorDisplay = document.createElement("span");
+        this.iteratorDisplay.textContent = `Run: ${this.stateManager.state.iterator || 0}`;
+        this.iteratorDisplay.style.color = "#ccc";
+        this.iteratorDisplay.style.fontSize = "12px";
+
+        const resetButton = this._createButton("Reset", () => {
+            this.stateManager.state.iterator = 0;
+            this.stateManager.save();
+            this.iteratorDisplay.textContent = `Run: 0`;
+        });
+        
+        container.append(this.iteratorDisplay, resetButton);
+        return container;
+    }
 
     _createButton(text, onClick) {
         const button = document.createElement("button");
@@ -68,8 +86,6 @@ export class Toolbar {
         );
         return button;
     }
-
-    // --- Functionality ---
     
     _setLoading(isLoading) {
         this._isLoading = isLoading;
@@ -86,14 +102,37 @@ export class Toolbar {
 
     fitViewToContent() {
         const state = this.stateManager.state;
-        if (state.boxes.length === 0) return;
+        const visibleBoxes = state.boxes.filter(box => box.displayState === 'normal' || !box.displayState);
 
-        const bounds = state.boxes.reduce((b, box) => ({
-            minX: Math.min(b.minX, box.x),
-            minY: Math.min(b.minY, box.y),
-            maxX: Math.max(b.maxX, box.x + box.width),
-            maxY: Math.max(b.maxY, box.y + box.height)
-        }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+        if (visibleBoxes.length === 0) return;
+
+        const bounds = visibleBoxes.reduce((b, box) => {
+            let effectiveWidth = box.width;
+            let effectiveHeight = box.height;
+
+            switch(box.type) {
+                case 'area':
+                    effectiveWidth = Math.max(box.width, 500);
+                    effectiveHeight = Math.max(box.height, 500);
+                    break;
+                case 'controls':
+                    effectiveWidth = Math.max(box.width, 300);
+                    effectiveHeight = Math.max(box.height, 200);
+                    break;
+                case 'text':
+                default:
+                    effectiveWidth = Math.max(box.width, 200);
+                    effectiveHeight = Math.max(box.height, 100);
+                    break;
+            }
+
+            return {
+                minX: Math.min(b.minX, box.x),
+                minY: Math.min(b.minY, box.y),
+                maxX: Math.max(b.maxX, box.x + effectiveWidth),
+                maxY: Math.max(b.maxY, box.y + effectiveHeight)
+            };
+        }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
 
         const contentW = bounds.maxX - bounds.minX;
         const contentH = bounds.maxY - bounds.minY;
@@ -219,4 +258,3 @@ export class Toolbar {
         }
     }
 }
-
