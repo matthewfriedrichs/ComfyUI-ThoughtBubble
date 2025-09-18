@@ -1,5 +1,3 @@
-// js/canvasEvents.js
-
 const OP_TYPES = {
     PAN: 'pan',
     DRAG: 'drag',

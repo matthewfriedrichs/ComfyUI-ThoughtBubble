@@ -1,0 +1,17 @@
+{
+    "--tb-font-family": "'Courier New', monospace",
+    "--tb-font-size": "15px",
+    "--tb-bg-color": "#000000",
+    "--tb-grid-color": "#221a00",
+    "--tb-toolbar-bg-color": "#110d00",
+    "--tb-box-bg-color": "#110d00",
+    "--tb-box-border-color": "#ffb000",
+    "--tb-box-shadow-color": "rgba(255, 176, 0, 0.2)",
+    "--tb-header-bg-color": "#221a00",
+    "--tb-header-text-color": "#ffb000",
+    "--tb-text-color": "#ffb000",
+    "--tb-textarea-bg-color": "#000000",
+    "--tb-button-bg-color": "#221a00",
+    "--tb-button-text-color": "#ffb000",
+    "--tb-accent-color": "#ffb000"
+}

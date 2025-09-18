@@ -1,12 +1,12 @@
-// js/toolbar.js
-
 import { ThoughtBubbleModal } from "./utils.js";
+import { ThemeEditor } from "./themeEditor.js";
 
 export class Toolbar {
-    constructor(toolbarEl, stateManager, renderer) {
+    constructor(toolbarEl, stateManager, renderer, themeManager) {
         this.toolbarEl = toolbarEl;
         this.stateManager = stateManager;
         this.renderer = renderer;
+        this.themeManager = themeManager;
         this.modal = new ThoughtBubbleModal();
         this._isLoading = false;
 
@@ -14,18 +14,24 @@ export class Toolbar {
     }
 
     _init() {
-        this.toolbarEl.innerHTML = ''; // Clear existing content
+        this.toolbarEl.innerHTML = ''; 
         
         this.saveButton = this._createButton("Save", () => this.handleSave());
         this.loadButton = this._createButton("Load", () => this.handleLoad());
         const fitViewButton = this._createButton("Fit View", () => this.fitViewToContent());
+        const themeButton = this._createButton("Theme", () => this.handleTheme());
         
         const { gridLabel, gridSelect } = this._createGridSizeSelector();
         const toggleGridButton = this._createToggleGridButton();
         
         const iteratorControl = this._createIteratorControl();
 
-        this.toolbarEl.append(this.saveButton, this.loadButton, fitViewButton, iteratorControl, gridLabel, gridSelect, toggleGridButton);
+        this.toolbarEl.append(this.saveButton, this.loadButton, fitViewButton, themeButton, gridLabel, gridSelect, toggleGridButton, iteratorControl);
+    }
+    
+    handleTheme() {
+        const editor = new ThemeEditor(this.stateManager, this.themeManager);
+        editor.show();
     }
 
     _createIteratorControl() {
@@ -34,7 +40,7 @@ export class Toolbar {
 
         this.iteratorDisplay = document.createElement("span");
         this.iteratorDisplay.textContent = `Run: ${this.stateManager.state.iterator || 0}`;
-        this.iteratorDisplay.style.color = "#ccc";
+        this.iteratorDisplay.style.color = "var(--tb-text-color)";
         this.iteratorDisplay.style.fontSize = "12px";
 
         const resetButton = this._createButton("Reset", () => {
@@ -46,7 +52,7 @@ export class Toolbar {
         container.append(this.iteratorDisplay, resetButton);
         return container;
     }
-
+    
     _createButton(text, onClick) {
         const button = document.createElement("button");
         button.textContent = text;

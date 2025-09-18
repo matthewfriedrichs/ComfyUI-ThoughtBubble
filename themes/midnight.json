@@ -1,0 +1,17 @@
+{
+    "--tb-font-family": "sans-serif",
+    "--tb-font-size": "14px",
+    "--tb-bg-color": "#121212",
+    "--tb-grid-color": "#2d2d2d",
+    "--tb-toolbar-bg-color": "#1e1e1e",
+    "--tb-box-bg-color": "#1e1e1e",
+    "--tb-box-border-color": "#bb86fc",
+    "--tb-box-shadow-color": "rgba(0,0,0,0.7)",
+    "--tb-header-bg-color": "#2c2c2c",
+    "--tb-header-text-color": "#eeeeee",
+    "--tb-text-color": "#e0e0e0",
+    "--tb-textarea-bg-color": "#121212",
+    "--tb-button-bg-color": "#373737",
+    "--tb-button-text-color": "#eeeeee",
+    "--tb-accent-color": "#03dac6"
+}

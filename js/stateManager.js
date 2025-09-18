@@ -1,5 +1,3 @@
-// js/stateManager.js
-
 import { boxTypeRegistry } from "./utils.js";
 
 function uuidv4() {
@@ -25,6 +23,7 @@ export class StateManager {
             }],
             pan: { x: 0, y: 0 }, zoom: 1.0, gridSize: 100, showGrid: true, savedView: null,
             iterator: 0,
+            theme: {},
         };
         try {
             const loadedState = JSON.parse(this.dataWidget.value);
@@ -33,7 +32,7 @@ export class StateManager {
             this.state = defaultState;
             console.error("Failed to parse ThoughtBubble state, resetting to default:", e);
         }
-        this.save(); // Immediately save after load to clean the state
+        this.save();
     }
 
     save() {

@@ -1,0 +1,17 @@
+{
+    "--tb-font-family": "'Fira Code', 'Lucida Console', monospace",
+    "--tb-font-size": "14px",
+    "--tb-bg-color": "#000000",
+    "--tb-grid-color": "#1a1a1a",
+    "--tb-toolbar-bg-color": "#0a0a0a",
+    "--tb-box-bg-color": "#0a0a0a",
+    "--tb-box-border-color": "#00ff41",
+    "--tb-box-shadow-color": "rgba(0, 255, 65, 0.2)",
+    "--tb-header-bg-color": "#141414",
+    "--tb-header-text-color": "#00ff41",
+    "--tb-text-color": "#00ff41",
+    "--tb-textarea-bg-color": "#000000",
+    "--tb-button-bg-color": "#141414",
+    "--tb-button-text-color": "#00ff41",
+    "--tb-accent-color": "#00ff41"
+}
