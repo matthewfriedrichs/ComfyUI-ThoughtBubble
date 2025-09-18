@@ -108,8 +108,16 @@ export class CanvasEvents {
         this.renderer.hideCreationMenu();
         if (e.target.closest(`${SELECTORS.TOOLBAR}, ${SELECTORS.BOX}`)) return;
 
-        if (e.button === 0) this._startDragCreate(e);
-        if (e.button === 1 || e.button === 2) this._startPan(e);
+        const panButton = this.stateManager.state.controls.panMouseButton;
+        
+        const panButtonMap = { "middle": 1, "right": 2 };
+        const panButtonCode = panButtonMap[panButton];
+
+        if (e.button === 0) {
+            this._startDragCreate(e);
+        } else if (e.button === panButtonCode) {
+            this._startPan(e);
+        }
     }
     
     _handleCanvasDblClick(e) {

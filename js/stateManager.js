@@ -24,9 +24,16 @@ export class StateManager {
             pan: { x: 0, y: 0 }, zoom: 1.0, gridSize: 100, showGrid: true, savedView: null,
             iterator: 0,
             theme: {},
+            controls: {
+                panMouseButton: "middle",
+            }
         };
         try {
             const loadedState = JSON.parse(this.dataWidget.value);
+            // Deep merge controls to prevent losing new properties on load
+            if(loadedState.controls) {
+                loadedState.controls = {...defaultState.controls, ...loadedState.controls};
+            }
             this.state = Object.assign({}, defaultState, loadedState);
         } catch (e) {
             this.state = defaultState;

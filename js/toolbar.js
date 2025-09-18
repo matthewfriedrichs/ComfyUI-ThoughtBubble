@@ -20,13 +20,46 @@ export class Toolbar {
         this.loadButton = this._createButton("Load", () => this.handleLoad());
         const fitViewButton = this._createButton("Fit View", () => this.fitViewToContent());
         const themeButton = this._createButton("Theme", () => this.handleTheme());
+        const controlsButton = this._createButton("Controls", () => this.handleControls());
         
         const { gridLabel, gridSelect } = this._createGridSizeSelector();
         const toggleGridButton = this._createToggleGridButton();
         
         const iteratorControl = this._createIteratorControl();
 
-        this.toolbarEl.append(this.saveButton, this.loadButton, fitViewButton, themeButton, gridLabel, gridSelect, toggleGridButton, iteratorControl);
+        this.toolbarEl.append(this.saveButton, this.loadButton, fitViewButton, themeButton, controlsButton, gridLabel, gridSelect, toggleGridButton, iteratorControl);
+    }
+
+    handleControls() {
+        const modal = new ThoughtBubbleModal();
+        const body = document.createElement('div');
+        
+        const panLabel = document.createElement('label');
+        panLabel.textContent = "Pan Canvas Button:";
+        
+        const panSelect = document.createElement('select');
+        const options = {
+            "middle": "Middle Mouse",
+            "right": "Right Mouse",
+            "disabled": "Disabled"
+        };
+        
+        for (const [value, text] of Object.entries(options)) {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = text;
+            panSelect.appendChild(option);
+        }
+        
+        panSelect.value = this.stateManager.state.controls.panMouseButton;
+        
+        panSelect.onchange = (e) => {
+            this.stateManager.state.controls.panMouseButton = e.target.value;
+            this.stateManager.save();
+        };
+        
+        body.append(panLabel, panSelect);
+        modal.show("Controls", body);
     }
     
     handleTheme() {
