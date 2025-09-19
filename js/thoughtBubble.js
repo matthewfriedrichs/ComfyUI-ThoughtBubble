@@ -73,6 +73,13 @@ app.registerExtension({
         const widgetContainer = document.createElement("div");
         widgetContainer.className = "thought-bubble-widget-container";
         widgetContainer.dataset.nodeId = node.id;
+
+        // --- FIX: Stop mouse events from propagating to the main ComfyUI canvas ---
+        // This ensures that our internal canvas events are not hijacked by the node dragging logic.
+        widgetContainer.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+        });
+
         const canvasWidget = node.addDOMWidget("thought_bubble", "div", widgetContainer);
         
         const canvasEl = document.createElement("div"); canvasEl.className = "thought-bubble-widget";
@@ -87,7 +94,9 @@ app.registerExtension({
         node.stateManager = new StateManager(dataWidget);
         const themeManager = new ThemeManager(node.id, node.stateManager.state.theme);
         const renderer = new CanvasRenderer(canvasEl, worldEl, gridEl, contextMenu, node.stateManager);
+        
         new CanvasEvents(canvasEl, worldEl, renderer, node.stateManager);
+        
         node.toolbar = new Toolbar(toolbarEl, node.stateManager, renderer, themeManager);
 
         renderer.render();
@@ -119,3 +128,4 @@ app.registerExtension({
         app.canvas.draw(true, true);
     }
 });
+

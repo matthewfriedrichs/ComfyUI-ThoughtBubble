@@ -71,12 +71,14 @@
     display: flex; 
     flex-direction: column; 
     box-shadow: 2px 2px 10px var(--tb-box-shadow-color);
-    min-width: 150px; 
-    min-height: 80px; 
     z-index: 1; 
 }
 .thought-bubble-box.maximized { z-index: 100; }
-.thought-bubble-box.minimized { height: 28px !important; min-height: 28px; overflow: hidden; }
+.thought-bubble-box.minimized { 
+    height: 28px !important; 
+    min-height: 28px !important; /* <-- Added !important for safety */
+    overflow: hidden; 
+}
 .thought-bubble-box-header { 
     background-color: var(--tb-header-bg-color); 
     color: var(--tb-header-text-color);
@@ -136,9 +138,11 @@
 }
 
 /* --- Specific Box Type Styles --- */
-.thought-bubble-box.text-box { min-width: 200px; min-height: 100px; }
-.thought-bubble-box.controls-box { min-width: 300px; min-height: 200px; }
-.thought-bubble-box.area-box { min-width: 500px; min-height: 500px; }
+/* FIX: Use :not(.minimized) to ensure min-height doesn't apply to minimized boxes */
+.thought-bubble-box.text-box:not(.minimized) { min-width: 200px; min-height: 100px; }
+.thought-bubble-box.controls-box:not(.minimized) { min-width: 300px; min-height: 200px; }
+.thought-bubble-box.area-box:not(.minimized) { min-width: 500px; min-height: 500px; }
+
 .thought-bubble-box-content.controls-box { 
     display: flex; 
     flex-direction: column; 
@@ -186,16 +190,16 @@
 /* --- Modals & Popups --- */
 .lora-autocomplete-dropdown { 
     position: absolute; 
-    background-color: var(--tb-box-bg-color, #2d2d2d); /* <-- FIX: Added fallback color */
-    border: 1px solid var(--tb-box-border-color, #555); /* <-- FIX: Added fallback color */
+    background-color: var(--tb-box-bg-color, #2d2d2d);
+    border: 1px solid var(--tb-box-border-color, #555);
     border-radius: 4px; 
     max-height: 200px; 
     overflow-y: auto; 
     z-index: 2100; 
-    color: var(--tb-text-color, #ccc); /* <-- FIX: Added fallback color */
+    color: var(--tb-text-color, #ccc);
 }
 .lora-autocomplete-item { padding: 5px 10px; cursor: pointer; }
-.lora-autocomplete-item:hover, .lora-autocomplete-item.selected { background-color: var(--tb-header-bg-color, #4a4a4a); } /* <-- FIX: Added fallback color */
+.lora-autocomplete-item:hover, .lora-autocomplete-item.selected { background-color: var(--tb-header-bg-color, #4a4a4a); }
 .thought-bubble-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); z-index: 2000; display: flex; align-items: center; justify-content: center; }
 .thought-bubble-modal-content { background-color: #333; border: 1px solid #555; border-radius: 8px; padding: 20px; min-width: 400px; max-width: 90%; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
 .thought-bubble-modal-title { margin-top: 0; color: #eee; }
@@ -210,16 +214,16 @@
 .thought-bubble-context-menu { 
     display: none; 
     position: absolute; 
-    background-color: var(--tb-box-bg-color, #2d2d2d); /* <-- FIX: Added fallback color */
-    border: 1px solid var(--tb-box-border-color, #555); /* <-- FIX: Added fallback color */
+    background-color: var(--tb-box-bg-color, #2d2d2d);
+    border: 1px solid var(--tb-box-border-color, #555);
     border-radius: 4px; 
     min-width: 150px; 
     z-index: 2200; 
-    color: var(--tb-text-color, #ccc); /* <-- FIX: Added fallback color */
+    color: var(--tb-text-color, #ccc);
     padding: 5px; 
 }
 .thought-bubble-context-menu-item { padding: 8px 12px; cursor: pointer; }
-.thought-bubble-context-menu-item:hover { background-color: var(--tb-header-bg-color, #4a4a4a); } /* <-- FIX: Added fallback color */
+.thought-bubble-context-menu-item:hover { background-color: var(--tb-header-bg-color, #4a4a4a); }
 .theme-editor-row { display: grid; grid-template-columns: 1fr 1fr auto; align-items: center; gap: 10px; margin-bottom: 5px; }
 .theme-editor-row label { text-transform: capitalize; }
 
