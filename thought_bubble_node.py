@@ -7,20 +7,20 @@ from .parser import CanvasParser
 import comfy.sd
 import comfy.utils
 import folder_paths
-import torch
 from server import PromptServer 
+import torch
 
 class ThoughtBubbleNode:
-    # ... (class setup is unchanged)
     WILDCARD_CACHE = {}
+    TEXTFILE_DIRECTORY = None # Cache the directory path
     
     @classmethod
     def INPUT_TYPES(s):
-        # ... (this is unchanged)
         default_state = {
-            "boxes": [{"id": "default-output-box", "title": "output", "content": "", "x": 100, "y": 100, "width": 400, "height": 300, "displayState": "normal"}],
+            "boxes": [{"id": "default-output-box", "title": "output", "content": "", "x": 100, "y": 100, "width": 400, "height": 300, "displayState": "normal", "type": "text"}],
             "pan": {"x": 0, "y": 0}, "zoom": 1.0, "gridSize": 100, "showGrid": True, "savedView": None,
-            "iterator": 0
+            "iterator": 0,
+            "theme": {}
         }
         
         return {
@@ -34,14 +34,12 @@ class ThoughtBubbleNode:
             },
         }
 
-    # ... (return types and names are unchanged)
     RETURN_TYPES = ("MODEL", "CLIP", "CONDITIONING", "CONDITIONING", "STRING", "STRING")
     RETURN_NAMES = ("model", "clip", "positive", "negative", "positive_prompt_text", "negative_prompt_text")
     FUNCTION = "process_data"
     CATEGORY = "Workflow Efficiency"
 
     def _load_wildcards(self):
-        # ... (this is unchanged)
         if self.WILDCARD_CACHE: return
         try:
             wildcards_dir = os.path.join(os.path.dirname(folder_paths.get_input_directory()), 'user', 'wildcards')
@@ -56,9 +54,17 @@ class ThoughtBubbleNode:
 
     def process_data(self, seed, canvas_data, model=None, clip=None):
         self._load_wildcards()
+        
+        # Find and cache the textfiles directory path if not already done
+        if self.TEXTFILE_DIRECTORY is None:
+            self.TEXTFILE_DIRECTORY = os.path.join(os.path.dirname(folder_paths.get_input_directory()), 'user', 'textfiles')
+            if not os.path.exists(self.TEXTFILE_DIRECTORY):
+                os.makedirs(self.TEXTFILE_DIRECTORY, exist_ok=True)
+
         box_map, area_boxes = {}, {}
         raw_prompt_source, command_links = "", {}
         positive_prompt, negative_prompt = "", ""
+        positive_conditioning, negative_conditioning = [], []
         model_out, clip_out = model, clip
         
         all_control_vars_by_id = {}
@@ -81,7 +87,6 @@ class ThoughtBubbleNode:
                             all_control_vars_by_id[var_id] = var_value
                         if var_name:
                             all_control_vars_by_name[var_name] = var_value
-
 
             # Second pass: find the prompt source and its links
             for box in boxes:
@@ -106,9 +111,9 @@ class ThoughtBubbleNode:
             if raw_prompt_source:
                 rng = random.Random()
                 rng.seed(seed)
-                # Pass the complete dataset to the parser
+                # Pass the complete dataset, including the new directory path, to the parser
                 parser = CanvasParser(
-                    box_map, self.WILDCARD_CACHE, rng, iterator, 
+                    box_map, self.WILDCARD_CACHE, self.TEXTFILE_DIRECTORY, rng, iterator, 
                     all_control_vars_by_id, all_control_vars_by_name, command_links
                 )
                 positive_prompt, negative_prompt = parser.parse(raw_prompt_source)
@@ -117,22 +122,19 @@ class ThoughtBubbleNode:
                     model_out, clip_out = self.apply_loras(model, clip, parser.loras_to_load)
 
             if clip_out is not None:
-                # ... (rest of the function is unchanged)
                 positive_conditioning = self.text_to_conditioning(clip_out, positive_prompt)
                 negative_conditioning = self.text_to_conditioning(clip_out, negative_prompt)
-                if parser.areas_to_apply:
+                if hasattr(parser, 'areas_to_apply') and parser.areas_to_apply:
                     positive_conditioning = self.apply_area_conditioning(
                         clip_out, positive_conditioning, parser.areas_to_apply, area_boxes, parser)
-            else:
-                positive_conditioning, negative_conditioning = [], []
+
+        except json.JSONDecodeError:
+            print(f"Thought Bubble Error: Could not decode JSON data from canvas.")
         except Exception as e:
             print(f"Thought Bubble Error: {e}")
         
-        PromptServer.instance.send_sync("thoughtbubble-post-execution", {"value": iterator + 1})
-        
         return (model_out, clip_out, positive_conditioning, negative_conditioning, positive_prompt, negative_prompt)
 
-    # ... (rest of the file is unchanged)
     def text_to_conditioning(self, clip, text):
         if not text: return []
         tokens = clip.tokenize(text)
@@ -177,3 +179,4 @@ class ThoughtBubbleNode:
                 cond_dict['mask'], cond_dict['mask_strength'] = mask, strength
                 final_conditioning.append([cond_tensor, cond_dict])
         return final_conditioning
+
