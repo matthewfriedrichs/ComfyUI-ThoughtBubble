@@ -108,20 +108,27 @@ app.registerExtension({
 
             originalOnDrawForeground?.apply(this, arguments);
             
-            if (dataWidget.value !== node.stateManager.lastKnownValue) {
-                node.stateManager.load();
-                themeManager.updateTheme(node.stateManager.state.theme);
-                node.toolbar._init();
-                renderer.render();
-            }
-
+            let sizeChanged = false;
             if (canvasWidget) {
                 const spaceAboveCanvas = Math.round(canvasWidget.last_y);
                 const availableHeight = Math.round(node.size[1]) - spaceAboveCanvas - 15;
                 const newHeight = `${Math.max(100, availableHeight)}px`;
                 if (widgetContainer.style.height !== newHeight) {
                     widgetContainer.style.height = newHeight;
+                    sizeChanged = true;
                 }
+            }
+
+            const dataChanged = dataWidget.value !== node.stateManager.lastKnownValue;
+
+            if (dataChanged) {
+                node.stateManager.load();
+                themeManager.updateTheme(node.stateManager.state.theme);
+                node.toolbar._init();
+            }
+
+            if (dataChanged || sizeChanged) {
+                renderer.render();
             }
         };
         
