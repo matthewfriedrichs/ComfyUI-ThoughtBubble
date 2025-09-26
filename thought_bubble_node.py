@@ -14,6 +14,7 @@ class ThoughtBubbleNode:
     WILDCARD_CACHE = {}
     LORA_CACHE = {} 
     TEXTFILE_DIRECTORY = None 
+    TEXTFILE_CACHE = {} # <-- NEW: Add a cache for text files
 
     def __init__(self):
         # Instance-level cache for models and conditioning
@@ -22,12 +23,14 @@ class ThoughtBubbleNode:
         self.last_lora_config = None
         self.last_input_model_id = None
         
-        # --- NEW: Caching for conditioning ---
         self.cached_positive_cond = None
         self.cached_negative_cond = None
         self.last_positive_prompt = None
         self.last_negative_prompt = None
         self.last_clip_id = None
+        
+        # --- NEW: Caching for area conditioning ---
+        self.last_area_config = None
 
     @classmethod
     def INPUT_TYPES(s):
@@ -119,14 +122,13 @@ class ThoughtBubbleNode:
                 rng.seed(seed)
                 parser = CanvasParser(
                     box_map, self.WILDCARD_CACHE, self.TEXTFILE_DIRECTORY, rng, iterator, 
-                    all_control_vars_by_id, all_control_vars_by_name, command_links
+                    all_control_vars_by_id, all_control_vars_by_name, command_links,
+                    self.TEXTFILE_CACHE # <-- NEW: Pass the cache to the parser
                 )
                 positive_prompt, negative_prompt = parser.parse(raw_prompt_source)
                 
-                # --- LoRA CACHING LOGIC ---
                 if model is not None and clip is not None:
                     loras_to_load = parser.loras_to_load
-                    
                     if not loras_to_load:
                         self.last_lora_config, self.cached_model, self.cached_clip = None, None, None
                         model_out, clip_out = model, clip
@@ -140,29 +142,56 @@ class ThoughtBubbleNode:
                             self.last_lora_config, self.last_input_model_id = current_lora_config, id(model)
 
             if clip_out is not None:
-                # --- NEW: CONDITIONING CACHING LOGIC ---
+                current_area_config = None
+                if hasattr(parser, 'areas_to_apply') and parser.areas_to_apply:
+                    config_list = []
+                    for title in sorted(parser.areas_to_apply):
+                        if title in area_boxes:
+                            area_box = area_boxes[title]
+                            area_prompt, _ = parser.parse(area_box.get("content", ""))
+                            if area_prompt:
+                                config_list.append((
+                                    area_prompt,
+                                    area_box.get("imageWidth", 512), area_box.get("imageHeight", 512),
+                                    area_box.get("areaX", 0), area_box.get("areaY", 0),
+                                    area_box.get("areaWidth", 64), area_box.get("areaHeight", 64),
+                                    area_box.get("strength", 1.0)
+                                ))
+                    current_area_config = tuple(config_list)
+
                 if (self.cached_positive_cond is not None and
                     self.last_clip_id == id(clip_out) and
                     self.last_positive_prompt == positive_prompt and
-                    self.last_negative_prompt == negative_prompt):
+                    self.last_negative_prompt == negative_prompt and
+                    self.last_area_config == current_area_config):
                     
-                    # CACHE HIT: Use cached conditioning
                     positive_conditioning = self.cached_positive_cond
                     negative_conditioning = self.cached_negative_cond
                 else:
-                    # CACHE MISS: Encode text and update cache
                     positive_conditioning = self.text_to_conditioning(clip_out, positive_prompt)
                     negative_conditioning = self.text_to_conditioning(clip_out, negative_prompt)
                     
+                    if current_area_config:
+                        for area_config in current_area_config:
+                            (area_prompt, img_w, img_h, x, y, w, h, strength) = area_config
+                            if w <= 0 or h <= 0: continue
+                            
+                            mask = torch.zeros((img_h // 8, img_w // 8), dtype=torch.float32, device="cpu")
+                            mask[y//8:(y+h)//8, x//8:(x+w)//8] = 1.0
+                            
+                            area_cond_data = self.text_to_conditioning(clip_out, area_prompt)
+                            if not area_cond_data: continue
+                            
+                            cond_tensor, cond_dict = area_cond_data[0][0], area_cond_data[0][1].copy()
+                            cond_dict['mask'], cond_dict['mask_strength'] = mask, strength
+                            positive_conditioning.append([cond_tensor, cond_dict])
+
                     self.cached_positive_cond = positive_conditioning
                     self.cached_negative_cond = negative_conditioning
                     self.last_positive_prompt = positive_prompt
                     self.last_negative_prompt = negative_prompt
                     self.last_clip_id = id(clip_out)
-
-                if hasattr(parser, 'areas_to_apply') and parser.areas_to_apply:
-                    positive_conditioning = self.apply_area_conditioning(
-                        clip_out, positive_conditioning, parser.areas_to_apply, area_boxes, parser)
+                    self.last_area_config = current_area_config
 
         except json.JSONDecodeError:
             print(f"Thought Bubble Error: Could not decode JSON data from canvas.")
@@ -178,8 +207,6 @@ class ThoughtBubbleNode:
         return [[cond.clone(), {"pooled_output": pooled.clone()}]]
 
     def apply_loras(self, model, clip, loras_to_load):
-        # This function acts as a single, consolidated step.
-        # 1. Clone the model and clip only ONCE.
         model_out, clip_out = model.clone(), clip.clone()
         available_loras = folder_paths.get_filename_list("loras")
 
@@ -205,32 +232,4 @@ class ThoughtBubbleNode:
         
         return model_out, clip_out
 
-    def apply_area_conditioning(self, clip, base_conditioning, area_titles, area_boxes_data, parser):
-        final_conditioning = base_conditioning.copy()
-        for title in area_titles:
-            if title in area_boxes_data:
-                area_box = area_boxes_data[title]
-                area_prompt, _ = parser.parse(area_box.get("content", ""))
-                if not area_prompt: continue
-                
-                image_width, image_height = area_box.get("imageWidth", 512), area_box.get("imageHeight", 512)
-                x, y = area_box.get("areaX", 0), area_box.get("areaY", 0)
-                width, height = area_box.get("areaWidth", 64), area_box.get("areaHeight", 64)
-                strength = area_box.get("strength", 1.0)
-
-                if width <= 0 or height <= 0: continue
-                
-                mask = torch.zeros((image_height // 8, image_width // 8), dtype=torch.float32, device="cpu")
-                mask[y//8:(y+height)//8, x//8:(x+width)//8] = 1.0
-                
-                area_cond_data = self.text_to_conditioning(clip, area_prompt)
-                if not area_cond_data: continue
-                
-                cond_tensor = area_cond_data[0][0]
-                cond_dict = area_cond_data[0][1].copy()
-                cond_dict['mask'], cond_dict['mask_strength'] = mask, strength
-                
-                final_conditioning.append([cond_tensor, cond_dict])
-                
-        return final_conditioning
 

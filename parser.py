@@ -11,7 +11,7 @@ import unicodedata
 from . import commands
 
 class CanvasParser:
-    def __init__(self, box_map, wildcard_data, textfiles_directory, rng, iterator=0, control_vars_by_id=None, control_vars_by_name=None, command_links=None):
+    def __init__(self, box_map, wildcard_data, textfiles_directory, rng, iterator=0, control_vars_by_id=None, control_vars_by_name=None, command_links=None, textfile_cache=None):
         self.box_map = {k.lower(): v for k, v in box_map.items()}
         self.wildcards = wildcard_data
         self.textfiles_directory = textfiles_directory # Store the directory path
@@ -22,6 +22,7 @@ class CanvasParser:
         self.control_vars_by_name = control_vars_by_name if control_vars_by_name is not None else {}
         self.command_links = command_links if command_links is not None else {}
         self.replacements = []
+        self.textfile_cache = textfile_cache if textfile_cache is not None else {}
 
         self.COMMAND_PRIORITY = [
             'HIDDEN_COMMAND', 'V_COMMAND', 'O_COMMAND', 'C_COMMAND', 'I_COMMAND', 'WILDCARD_COMMAND', 
