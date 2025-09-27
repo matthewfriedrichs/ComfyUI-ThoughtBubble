@@ -9,7 +9,7 @@ async function getLoraList() {
     try {
         const response = await fetch("/loras");
         const data = await response.json();
-        LORA_LIST_CACHE = data; 
+        LORA_LIST_CACHE = data;
         return LORA_LIST_CACHE.map(name => name.replace(/\.[^/.]+$/, ""));
     } catch (error) {
         console.error("Failed to fetch LoRA list:", error);
@@ -17,19 +17,31 @@ async function getLoraList() {
     }
 }
 
-// --- NEW ---
-// Cache for the text file list to avoid repeated API calls.
 let TEXTFILE_LIST_CACHE = null;
 async function getTextFileList() {
     if (TEXTFILE_LIST_CACHE) return TEXTFILE_LIST_CACHE;
     try {
         const response = await fetch("/thoughtbubble/textfiles");
         const data = await response.json();
-        TEXTFILE_LIST_CACHE = data; 
-        // Return filenames without the .txt extension for consistency.
+        TEXTFILE_LIST_CACHE = data;
         return TEXTFILE_LIST_CACHE.map(name => name.replace(/\.txt$/, ""));
     } catch (error) {
         console.error("Failed to fetch text file list:", error);
+        return [];
+    }
+}
+
+// --- NEW: Add embedding list fetching and caching ---
+let EMBEDDING_LIST_CACHE = null;
+async function getEmbeddingList() {
+    if (EMBEDDING_LIST_CACHE) return EMBEDDING_LIST_CACHE;
+    try {
+        const response = await fetch("/embeddings"); // Assumes an endpoint like /loras
+        const data = await response.json();
+        EMBEDDING_LIST_CACHE = data;
+        return EMBEDDING_LIST_CACHE.map(name => name.replace(/\.[^/.]+$/, ""));
+    } catch (error) {
+        console.error("Failed to fetch embedding list:", error);
         return [];
     }
 }
@@ -48,7 +60,7 @@ export class TextBox extends BaseBox {
         contentEl.className = "thought-bubble-box-content";
         const textarea = document.createElement("textarea");
         textarea.value = this.boxData.content;
-        this.textarea = textarea; 
+        this.textarea = textarea;
 
         const eventHandler = (e) => {
             this.lastEvent = e;
@@ -77,92 +89,64 @@ export class TextBox extends BaseBox {
         const textBeforeCursor = text.slice(0, cursorPos);
 
         const loraMatch = textBeforeCursor.match(/\blora\(([^)]*)$/i);
+        const embedMatch = textBeforeCursor.match(/\bembed\(([^)]*)$/i); // <-- NEW
         const commandMatch = textBeforeCursor.match(/\b([iw])\(([^)]*)$/i);
-        // --- NEW --- Add a match for the o() command.
         const openMatch = textBeforeCursor.match(/\bo\(([^)]*)$/i);
-        
+
         this.closeAutocomplete();
 
         if (loraMatch) {
             this.handleLoraAutocomplete(loraMatch);
+        } else if (embedMatch) { // <-- NEW
+            this.handleEmbeddingAutocomplete(embedMatch);
         } else if (commandMatch) {
             this.showVariableDropdown(commandMatch);
         } else if (openMatch) {
-            // --- NEW --- Trigger the new autocomplete handler for o().
             this.handleTextFileAutocomplete(openMatch);
         }
     }
 
-    // --- NEW ---
-    // This function handles the autocomplete for the o() command.
-    // It's modeled after the handleLoraAutocomplete function.
-    async handleTextFileAutocomplete(match) {
-        const text = this.textarea.value;
-        const commandStartIndex = match.index;
-        const contentPrefix = match[1];
-
+    // --- NEW: Autocomplete handler for embeddings ---
+    async handleEmbeddingAutocomplete(match) {
+        const prefix = match[1];
         this.closeAutocomplete();
+
+        const allEmbeddings = await getEmbeddingList();
+        const filteredEmbeddings = allEmbeddings.filter(e => e.toLowerCase().includes(prefix.toLowerCase()));
+        if (filteredEmbeddings.length === 0) return;
+
+        const dropdown = this.createDropdownMenu();
+        this.activeDropdown = dropdown;
+
+        const header = this.createDropdownHeader(`✓ ${prefix}` || 'Select an embedding...');
+        dropdown.appendChild(header);
+
+        filteredEmbeddings.forEach(embeddingName => {
+            const item = this.createDropdownItem(embeddingName, () => {
+                this.insertAutocompleteText(`embed(${embeddingName})`, match.index);
+            });
+            dropdown.appendChild(item);
+        });
+    }
+
+
+    async handleTextFileAutocomplete(match) {
+        const prefix = match[1];
+        this.closeAutocomplete();
+
         const allFiles = await getTextFileList();
-        
-        const filteredFiles = allFiles.filter(f => f.toLowerCase().includes(contentPrefix.toLowerCase()));
+        const filteredFiles = allFiles.filter(f => f.toLowerCase().includes(prefix.toLowerCase()));
         if (filteredFiles.length === 0) return;
 
-        const dropdown = document.createElement('div');
-        dropdown.className = 'lora-autocomplete-dropdown';
+        const dropdown = this.createDropdownMenu();
         this.activeDropdown = dropdown;
-        document.body.appendChild(dropdown);
 
-        const rect = this.textarea.getBoundingClientRect();
-        const canvasRect = this.canvasEl.getBoundingClientRect();
-        const xPos = Math.max(rect.left, canvasRect.left);
-
-        let yPos;
-        if (this.lastEvent && typeof this.lastEvent.clientY === 'number') {
-            yPos = this.lastEvent.clientY + 20;
-        } else {
-            const bottomEdge = Math.min(rect.bottom, canvasRect.bottom);
-            yPos = bottomEdge - 50;
-        }
-
-        dropdown.style.left = `${xPos}px`;
-        dropdown.style.top = `${yPos}px`;
-        
-        const header = document.createElement('div');
-        header.className = 'lora-autocomplete-item';
-        header.textContent = contentPrefix ? `✓ ${contentPrefix}` : 'Select a file...';
-        header.style.fontWeight = 'bold';
-        header.style.borderBottom = '1px solid #555';
+        const header = this.createDropdownHeader(`✓ ${prefix}` || 'Select a file...');
         dropdown.appendChild(header);
 
         filteredFiles.forEach(filename => {
-            const item = document.createElement('div');
-            item.className = 'lora-autocomplete-item';
-            item.textContent = filename;
-            item.addEventListener('mousedown', (event) => {
-                event.preventDefault();
-
-                const fullText = this.textarea.value;
-                let commandEnd = fullText.indexOf(')', commandStartIndex);
-                if (commandEnd === -1) {
-                    commandEnd = fullText.length;
-                } else {
-                    commandEnd += 1; 
-                }
-                
-                const textBefore = fullText.slice(0, commandStartIndex);
-                const textAfter = fullText.slice(commandEnd);
-                
-                const newCommand = `o(${filename})`;
-                const newText = textBefore + newCommand + textAfter;
-
-                this.textarea.value = newText;
-                this.boxData.content = newText;
-                this.requestSave();
-                this.closeAutocomplete();
-                
-                const newCursorPos = (textBefore + newCommand).length - 1;
-                this.textarea.focus();
-                this.textarea.setSelectionRange(newCursorPos, newCursorPos);
+            const item = this.createDropdownItem(filename, () => {
+                this.insertAutocompleteText(`o(${filename})`, match.index);
             });
             dropdown.appendChild(item);
         });
@@ -190,26 +174,9 @@ export class TextBox extends BaseBox {
         const allVariables = [];
         variablesByBoxId.forEach(group => allVariables.push(...group.variables));
 
-        const dropdown = document.createElement('div');
-        dropdown.className = 'lora-autocomplete-dropdown';
+        const dropdown = this.createDropdownMenu();
         this.activeDropdown = dropdown;
-        document.body.appendChild(dropdown);
-        
-        const rect = this.textarea.getBoundingClientRect();
-        const canvasRect = this.canvasEl.getBoundingClientRect();
-        const xPos = Math.max(rect.left, canvasRect.left);
-        
-        let yPos;
-        if (this.lastEvent && typeof this.lastEvent.clientY === 'number') {
-            yPos = this.lastEvent.clientY + 20;
-        } else {
-            const bottomEdge = Math.min(rect.bottom, canvasRect.bottom);
-            yPos = bottomEdge - 50;
-        }
 
-        dropdown.style.left = `${xPos}px`;
-        dropdown.style.top = `${yPos}px`;
-        
         const commandId = commandMatch.index;
         const currentLinkId = this.boxData.commandLinks?.[commandId];
         const commandType = commandMatch[1].toLowerCase();
@@ -222,19 +189,11 @@ export class TextBox extends BaseBox {
                 currentLinkText = `${linkedVar.boxTitle} / ${linkedVar.name}`;
             }
         }
-        
-        const header = document.createElement('div');
-        header.className = 'lora-autocomplete-item';
-        header.textContent = `✓ ${currentLinkText}`;
-        header.style.fontWeight = 'bold';
-        header.style.borderBottom = '1px solid #555';
+
+        const header = this.createDropdownHeader(`✓ ${currentLinkText}`);
         dropdown.appendChild(header);
 
-        const defaultOption = document.createElement('div');
-        defaultOption.className = 'lora-autocomplete-item';
-        defaultOption.textContent = `Default (${defaultText})`;
-        defaultOption.addEventListener('mousedown', (e) => {
-             e.preventDefault();
+        const defaultOption = this.createDropdownItem(`Default (${defaultText})`, () => {
              this.linkCommandToVariable(commandMatch, null);
              this.closeAutocomplete();
         });
@@ -250,25 +209,21 @@ export class TextBox extends BaseBox {
             dropdown.appendChild(groupHeader);
 
             group.variables.forEach(v => {
-                const item = document.createElement('div');
-                item.className = 'lora-autocomplete-item';
-                item.style.paddingLeft = '20px';
-                item.textContent = v.name;
-                item.addEventListener('mousedown', (e) => {
-                    e.preventDefault();
+                const item = this.createDropdownItem(v.name, () => {
                     this.linkCommandToVariable(commandMatch, v.id);
                     this.closeAutocomplete();
                 });
+                item.style.paddingLeft = '20px';
                 dropdown.appendChild(item);
             });
         }
     }
-    
+
     linkCommandToVariable(commandMatch, variableId) {
         if (!this.boxData.commandLinks) {
             this.boxData.commandLinks = {};
         }
-        
+
         const commandId = commandMatch.index;
 
         if (variableId) {
@@ -277,125 +232,103 @@ export class TextBox extends BaseBox {
             delete this.boxData.commandLinks[commandId];
         }
 
-        this.requestSave(); 
+        this.requestSave();
     }
 
     async handleLoraAutocomplete(match) {
-        const text = this.textarea.value;
-        const cursorPos = this.textarea.selectionStart;
-        const commandStartIndex = match.index;
-        
-        let contentEnd = text.indexOf(')', commandStartIndex);
-        if (contentEnd === -1 || contentEnd < cursorPos) { contentEnd = text.length; }
-        const commandContent = text.substring(commandStartIndex + "lora(".length, contentEnd);
-        const selectedLoraName = commandContent.split(':')[0].trim();
-        
         const loraPrefix = match[1].split(':')[0];
-        
         this.closeAutocomplete();
+
         const allLoras = await getLoraList();
+        const filteredLoras = allLoras.filter(l => l.toLowerCase().includes(loraPrefix.toLowerCase()));
+        if (filteredLoras.length === 0) return;
 
-        let lorasInFolder = [];
-        let otherLoras = [];
-        let currentFolder = null;
+        const dropdown = this.createDropdownMenu();
+        this.activeDropdown = dropdown;
+        
+        const currentCommandText = this.textarea.value.slice(match.index, this.textarea.selectionStart);
+        const selectedLoraName = loraPrefix || 'Select a LoRA...';
 
-        if (selectedLoraName && selectedLoraName.includes('/')) {
-            currentFolder = selectedLoraName.substring(0, selectedLoraName.lastIndexOf('/'));
-        }
+        const header = this.createDropdownHeader(`✓ ${selectedLoraName}`);
+        dropdown.appendChild(header);
 
-        allLoras.forEach(lora => {
-            if (currentFolder && lora.startsWith(currentFolder + '/')) {
-                lorasInFolder.push(lora);
-            } else {
-                otherLoras.push(lora);
-            }
+        filteredLoras.forEach(loraName => {
+            const item = this.createDropdownItem(loraName, () => {
+                const fullText = this.textarea.value;
+                const commandStart = match.index;
+                let commandEnd = fullText.indexOf(')', commandStart);
+                if (commandEnd === -1) commandEnd = fullText.length; else commandEnd += 1;
+
+                const currentFullCommand = fullText.substring(commandStart, commandEnd);
+                const strengthMatch = currentFullCommand.match(/:[\d.]+\)?$/);
+                const strength = strengthMatch ? strengthMatch[0].replace(')', '') : ":1.0";
+                
+                this.insertAutocompleteText(`lora(${loraName}${strength})`, match.index, true);
+            });
+            dropdown.appendChild(item);
         });
+    }
 
-        const filterFn = l => l.toLowerCase().includes(loraPrefix.toLowerCase());
-        lorasInFolder = lorasInFolder.filter(filterFn);
-        otherLoras = otherLoras.filter(filterFn);
-
-        if (lorasInFolder.length === 0 && otherLoras.length === 0) return;
-
+    // --- NEW: Helper functions for dropdowns ---
+    createDropdownMenu() {
         const dropdown = document.createElement('div');
         dropdown.className = 'lora-autocomplete-dropdown';
-        this.activeDropdown = dropdown;
         document.body.appendChild(dropdown);
 
         const rect = this.textarea.getBoundingClientRect();
         const canvasRect = this.canvasEl.getBoundingClientRect();
         const xPos = Math.max(rect.left, canvasRect.left);
-
-        let yPos;
-        if (this.lastEvent && typeof this.lastEvent.clientY === 'number') {
-            yPos = this.lastEvent.clientY + 20;
-        } else {
-            const bottomEdge = Math.min(rect.bottom, canvasRect.bottom);
-            yPos = bottomEdge - 50;
-        }
+        let yPos = (this.lastEvent && typeof this.lastEvent.clientY === 'number') ? this.lastEvent.clientY + 20 : Math.min(rect.bottom, canvasRect.bottom) - 50;
 
         dropdown.style.left = `${xPos}px`;
         dropdown.style.top = `${yPos}px`;
+        return dropdown;
+    }
 
+    createDropdownHeader(text) {
         const header = document.createElement('div');
         header.className = 'lora-autocomplete-item';
-        header.textContent = selectedLoraName ? `✓ ${selectedLoraName}` : 'Select a LoRA...';
+        header.textContent = text;
         header.style.fontWeight = 'bold';
         header.style.borderBottom = '1px solid #555';
-        dropdown.appendChild(header);
-
-        const addLoraItem = (lora) => {
-            const loraName = lora.replace(/\.[^/.]+$/, "");
-            if (loraName === selectedLoraName) return;
-
-            const item = document.createElement('div');
-            item.className = 'lora-autocomplete-item';
-            item.textContent = loraName;
-            item.addEventListener('mousedown', (event) => {
-                event.preventDefault();
-
-                const fullText = this.textarea.value;
-                const commandStart = match.index;
-                
-                let commandEnd = fullText.indexOf(')', commandStart);
-                if (commandEnd === -1) {
-                    commandEnd = fullText.length;
-                } else {
-                    commandEnd += 1; 
-                }
-
-                const currentCommandText = fullText.substring(commandStart, commandEnd);
-                const strengthMatch = currentCommandText.match(/:[\d.]+\)?$/);
-                let strength = strengthMatch ? strengthMatch[0].replace(')','') : ":1.0";
-                
-                const textBefore = fullText.slice(0, commandStart);
-                const textAfter = fullText.slice(commandEnd);
-                
-                const newCommand = `lora(${loraName}${strength})`;
-                const newText = textBefore + newCommand + textAfter;
-
-                this.textarea.value = newText;
-                this.boxData.content = newText;
-                this.requestSave();
-                this.closeAutocomplete();
-                
-                const newCursorPos = (textBefore + `lora(${loraName}`).length;
-                this.textarea.focus();
-                this.textarea.setSelectionRange(newCursorPos, newCursorPos);
-            });
-            dropdown.appendChild(item);
-        };
-
-        if (lorasInFolder.length > 0) {
-            lorasInFolder.forEach(addLoraItem);
-            if (otherLoras.length > 0) {
-                const separator = document.createElement('div');
-                separator.style.cssText = 'border-top: 1px solid #555; margin: 2px 0;';
-                dropdown.appendChild(separator);
-            }
-        }
-        otherLoras.forEach(addLoraItem);
+        return header;
     }
+
+    createDropdownItem(text, onSelect) {
+        const item = document.createElement('div');
+        item.className = 'lora-autocomplete-item';
+        item.textContent = text;
+        item.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            onSelect();
+            this.closeAutocomplete();
+        });
+        return item;
+    }
+
+    insertAutocompleteText(newCommand, startIndex, isLora = false) {
+        const fullText = this.textarea.value;
+        let commandEnd = fullText.indexOf(')', startIndex);
+        if (commandEnd === -1) commandEnd = fullText.length; else commandEnd += 1;
+
+        const textBefore = fullText.slice(0, startIndex);
+        const textAfter = fullText.slice(commandEnd);
+
+        const newText = textBefore + newCommand + textAfter;
+        this.textarea.value = newText;
+        this.boxData.content = newText;
+        this.requestSave();
+
+        let newCursorPos = (textBefore + newCommand).length - 1;
+        if(isLora) {
+             newCursorPos = (textBefore + newCommand.split(':')[0]).length;
+        }
+
+
+        this.textarea.focus();
+        this.textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }
+
 
     closeAutocomplete() {
         if (this.activeDropdown) {
@@ -414,4 +347,3 @@ export class TextBox extends BaseBox {
         };
     }
 }
-

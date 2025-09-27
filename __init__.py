@@ -34,6 +34,16 @@ async def get_loras(request):
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
 
+# --- NEW: Add an endpoint for embeddings ---
+@server.PromptServer.instance.routes.get("/embeddings")
+async def get_embeddings(request):
+    try:
+        embedding_names = folder_paths.get_filename_list("embeddings")
+        return web.json_response(embedding_names)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
 # --- Text File Endpoints ---
 @server.PromptServer.instance.routes.get("/thoughtbubble/textfiles")
 async def get_text_files(request):
@@ -48,17 +58,17 @@ async def save_text_file(request):
         data = await request.json()
         filename = data.get('filename')
         content = data.get('content')
-        
+
         if not filename or not isinstance(filename, str):
             return web.json_response({"error": "Filename is required and must be a string."}, status=400)
-        
+
         if len(content.encode('utf-8')) > MAX_FILE_SIZE_BYTES:
             return web.json_response({"error": f"Content exceeds the maximum file size of {MAX_FILE_SIZE_MB}MB."}, status=400)
 
         secure_filename = os.path.basename(filename)
         if not secure_filename or not secure_filename.endswith('.txt'):
             return web.json_response({"error": "Invalid filename. It must not be empty and must end with .txt"}, status=400)
-        
+
         filepath = os.path.join(textfiles_directory, secure_filename)
         if not is_path_safe(textfiles_directory, filepath):
             return web.json_response({"error": "Invalid file path detected."}, status=403)
@@ -76,7 +86,7 @@ async def load_text_file(request):
     ensure_user_directories()
     filename = request.query.get('filename')
     if not filename: return web.json_response({"error": "Filename is required"}, status=400)
-    
+
     secure_filename = os.path.basename(filename)
     filepath = os.path.join(textfiles_directory, secure_filename)
 
@@ -150,7 +160,7 @@ async def get_default_theme(request):
     filepath = os.path.join(themes_directory, "default.json")
     if not os.path.exists(filepath):
         return web.json_response({"error": "No default theme set."}, status=404)
-    
+
     with open(filepath, 'r', encoding='utf-8') as f:
         return web.json_response(json.load(f))
 
