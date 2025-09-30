@@ -76,7 +76,7 @@
 .thought-bubble-box.maximized { z-index: 100; }
 .thought-bubble-box.minimized { 
     height: 28px !important; 
-    min-height: 28px !important; /* <-- Added !important for safety */
+    min-height: 28px !important;
     overflow: hidden; 
 }
 .thought-bubble-box-header { 
@@ -130,19 +130,19 @@
     position: absolute; 
     bottom: 0; 
     right: 0; 
-    width: 10px; 
-    height: 10px; 
+    width: 14px; 
+    height: 14px; 
     cursor: se-resize; 
     background: var(--tb-accent-color);
     clip-path: polygon(100% 0, 100% 100%, 0 100%); 
 }
 
 /* --- Specific Box Type Styles --- */
-/* FIX: Use :not(.minimized) to ensure min-height doesn't apply to minimized boxes */
 .thought-bubble-box.text-box:not(.minimized) { min-width: 200px; min-height: 100px; }
 .thought-bubble-box.controls-box:not(.minimized) { min-width: 300px; min-height: 200px; }
 .thought-bubble-box.area-box:not(.minimized) { min-width: 500px; min-height: 500px; }
 
+/* -- Controls Box -- */
 .thought-bubble-box-content.controls-box { 
     display: flex; 
     flex-direction: column; 
@@ -176,16 +176,78 @@
 }
 .controls-variable-value { text-align: right; }
 .controls-variable-delete { background: #5c2828; border: 1px solid #a14242; color: #fff; border-radius: 4px; cursor: pointer; width: 28px; height: 28px; }
+
+/* -- Area Box -- */
 .area-conditioning { padding: 4px; gap: 4px; }
-.ac-toolbar { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; height: auto; min-height: 30px; }
-.ac-toolbar label { font-size: 12px; }
+.ac-toolbar { 
+    display: flex; 
+    align-items: center; 
+    gap: 8px; 
+    flex-shrink: 0; 
+    flex-wrap: wrap; 
+    height: auto; 
+    min-height: 30px; 
+}
+.ac-control-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.ac-control-group label {
+    white-space: nowrap;
+}
 .ac-toolbar input { width: 50px; background-color: var(--tb-textarea-bg-color); border: 1px solid var(--tb-bg-color); color: var(--tb-text-color); }
-.ac-main-content { flex-grow: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
-.ac-main-content textarea { height: 60px; flex-shrink: 0; width: auto; resize: vertical; min-height: 40px; }
-.ac-canvas-container { flex-grow: 1; min-width: 150px; position: relative; min-height: 100px; }
-.ac-canvas-container canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair; }
-.ac-resize-handle { position: absolute; width: 12px; height: 12px; background: var(--tb-accent-color); border: 1px solid #111; right: 0; bottom: 0; cursor: se-resize; }
-.ac-resize-handle:hover { background-color: white; }
+.ac-main-content { 
+    flex-grow: 1; 
+    display: flex; 
+    flex-direction: row; 
+    gap: 0; 
+    overflow: hidden; 
+}
+.ac-canvas-container { 
+    flex-grow: 1; 
+    min-width: 150px; 
+    position: relative; 
+    display: flex;
+}
+.ac-canvas-container canvas { 
+    position: absolute; 
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 100%; 
+    cursor: crosshair; 
+}
+.ac-textarea-container {
+    display: flex;
+    flex-direction: column;
+    min-width: 100px;
+}
+.ac-divider {
+    flex-shrink: 0;
+    width: 10px;
+    background-color: transparent;
+    cursor: col-resize;
+    transition: background-color 0.2s;
+}
+.ac-divider:hover {
+    background-color: var(--tb-accent-color);
+}
+
+.ac-resize-handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: var(--tb-accent-color);
+    border: 1px solid #111;
+    z-index: 5;
+    border-radius: 50%;
+}
+.ac-handle-nw, .ac-handle-se { cursor: nwse-resize; }
+.ac-handle-ne, .ac-handle-sw { cursor: nesw-resize; }
+.ac-handle-n, .ac-handle-s { cursor: ns-resize; }
+.ac-handle-e, .ac-handle-w { cursor: ew-resize; }
+
 
 /* --- Modals & Popups --- */
 .lora-autocomplete-dropdown { 

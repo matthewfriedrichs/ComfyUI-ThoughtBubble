@@ -1,6 +1,7 @@
 // js/box-types/areaBox.js
 
 import { BaseBox } from "./baseBox.js";
+import { TextBox } from "./textBox.js";
 
 export class AreaConditioningBox extends BaseBox {
     constructor(options) {
@@ -8,6 +9,14 @@ export class AreaConditioningBox extends BaseBox {
         this.data = this.boxData; // Alias for clarity
         this.dom = {}; // To store DOM elements
         this.clickCycle = { region: null, count: 0 }; // Tracks double-click cycles
+
+        // Capture properties needed for the rich text editor
+        this.setLastActiveTextarea = options.setLastActiveTextarea;
+        this.canvasEl = options.canvasEl;
+        
+        // Initialize state for the new features
+        if (this.data.verticalSplit === undefined) this.data.verticalSplit = 0.5;
+        if (this.data.commandLinks === undefined) this.data.commandLinks = {};
     }
 
     render(contentEl) {
@@ -15,80 +24,139 @@ export class AreaConditioningBox extends BaseBox {
 
         this.dom.topToolbar = document.createElement("div"); this.dom.topToolbar.className = "ac-toolbar";
         this.dom.mainContent = document.createElement("div"); this.dom.mainContent.className = "ac-main-content";
-        this.dom.bottomToolbar = document.createElement("div"); this.dom.bottomToolbar.className = "ac-toolbar";
 
         this.createTopToolbar();
         this.createMainContent();
-        this.createBottomToolbar();
 
-        contentEl.append(this.dom.topToolbar, this.dom.mainContent, this.dom.bottomToolbar);
+        contentEl.append(this.dom.topToolbar, this.dom.mainContent);
 
         this.updateInputs();
         this.scheduleDraw();
     }
 
     createTopToolbar() {
-        const wLabel = document.createElement("label"); wLabel.textContent = "Image Width:";
+        const createControlGroup = (labelText, inputEl) => {
+            const group = document.createElement('div');
+            group.className = 'ac-control-group';
+            const label = document.createElement("label");
+            label.textContent = labelText;
+            group.append(label, inputEl);
+            return group;
+        };
+
         this.dom.imageWidthInput = document.createElement("input");
         this.dom.imageWidthInput.type = "number";
-        this.dom.imageWidthInput.value = this.data.imageWidth;
         this.dom.imageWidthInput.onchange = (e) => this.updateState('imageWidth', parseInt(e.target.value));
 
-        const hLabel = document.createElement("label"); hLabel.textContent = "Image Height:";
         this.dom.imageHeightInput = document.createElement("input");
         this.dom.imageHeightInput.type = "number";
-        this.dom.imageHeightInput.value = this.data.imageHeight;
         this.dom.imageHeightInput.onchange = (e) => this.updateState('imageHeight', parseInt(e.target.value));
 
-        this.dom.topToolbar.append(wLabel, this.dom.imageWidthInput, hLabel, this.dom.imageHeightInput);
-    }
-
-    createMainContent() {
-        this.dom.textarea = document.createElement("textarea");
-        this.dom.textarea.value = this.data.content;
-        this.dom.textarea.addEventListener('change', () => {
-            this.data.content = this.dom.textarea.value;
-            this.requestSave();
-        });
-
-        this.dom.canvasContainer = document.createElement("div"); this.dom.canvasContainer.className = "ac-canvas-container";
-        this.dom.canvas = document.createElement("canvas");
-        this.dom.canvasContainer.appendChild(this.dom.canvas);
-        
-        this.dom.mainContent.append(this.dom.canvasContainer, this.dom.textarea);
-
-        this.ctx = this.dom.canvas.getContext('2d');
-        this.addCanvasListeners();
-    }
-
-    createBottomToolbar() {
-        const xLabel = document.createElement("label"); xLabel.textContent = "X:";
         this.dom.areaXInput = document.createElement("input");
         this.dom.areaXInput.type = "number";
         this.dom.areaXInput.onchange = (e) => this.updateState('areaX', parseInt(e.target.value));
 
-        const yLabel = document.createElement("label"); yLabel.textContent = "Y:";
         this.dom.areaYInput = document.createElement("input");
         this.dom.areaYInput.type = "number";
         this.dom.areaYInput.onchange = (e) => this.updateState('areaY', parseInt(e.target.value));
 
-        const wLabel = document.createElement("label"); wLabel.textContent = "W:";
         this.dom.areaWidthInput = document.createElement("input");
         this.dom.areaWidthInput.type = "number";
         this.dom.areaWidthInput.onchange = (e) => this.updateState('areaWidth', parseInt(e.target.value));
-
-        const hLabel = document.createElement("label"); hLabel.textContent = "H:";
+        
         this.dom.areaHeightInput = document.createElement("input");
         this.dom.areaHeightInput.type = "number";
         this.dom.areaHeightInput.onchange = (e) => this.updateState('areaHeight', parseInt(e.target.value));
         
-        const sLabel = document.createElement("label"); sLabel.textContent = "Strength:";
         this.dom.strengthInput = document.createElement("input");
         this.dom.strengthInput.type = "number";
         this.dom.strengthInput.step = "0.1";
         this.dom.strengthInput.onchange = (e) => this.updateState('strength', parseFloat(e.target.value));
         
-        this.dom.bottomToolbar.append(xLabel, this.dom.areaXInput, yLabel, this.dom.areaYInput, wLabel, this.dom.areaWidthInput, hLabel, this.dom.areaHeightInput, sLabel, this.dom.strengthInput);
+        this.dom.topToolbar.append(
+            createControlGroup("Image Width:", this.dom.imageWidthInput),
+            createControlGroup("Image Height:", this.dom.imageHeightInput),
+            createControlGroup("X:", this.dom.areaXInput),
+            createControlGroup("Y:", this.dom.areaYInput),
+            createControlGroup("W:", this.dom.areaWidthInput),
+            createControlGroup("H:", this.dom.areaHeightInput),
+            createControlGroup("Strength:", this.dom.strengthInput)
+        );
+    }
+
+    createMainContent() {
+        this.dom.canvasContainer = document.createElement("div"); this.dom.canvasContainer.className = "ac-canvas-container";
+        this.dom.canvas = document.createElement("canvas");
+        this.dom.canvasContainer.appendChild(this.dom.canvas);
+        
+        const divider = document.createElement("div"); divider.className = "ac-divider";
+        this.addDividerListeners(divider);
+
+        this.dom.textareaContainer = document.createElement("div");
+        this.dom.textareaContainer.className = "ac-textarea-container";
+
+        // Set initial panel sizes based on saved state
+        const splitPercentage = this.data.verticalSplit * 100;
+        this.dom.canvasContainer.style.flexBasis = `${splitPercentage}%`;
+        this.dom.textareaContainer.style.flexBasis = `${100 - splitPercentage}%`;
+
+        // Instantiate the full-featured TextBox
+        this.textBox = new TextBox({
+            boxData: this.data,
+            requestSave: this.requestSave,
+            setLastActiveTextarea: this.setLastActiveTextarea,
+            canvasEl: this.canvasEl
+        });
+        this.textBox.render(this.dom.textareaContainer);
+        
+        this.dom.mainContent.append(this.dom.canvasContainer, divider, this.dom.textareaContainer);
+
+        this.ctx = this.dom.canvas.getContext('2d');
+        this.addCanvasListeners();
+    }
+    
+    addDividerListeners(divider) {
+        divider.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const startX = e.clientX;
+            const startCanvasWidth = this.dom.canvasContainer.offsetWidth;
+            const totalWidth = this.dom.mainContent.offsetWidth;
+
+            const onMouseMove = (moveE) => {
+                const dx = moveE.clientX - startX;
+                let newCanvasWidth = startCanvasWidth + dx;
+
+                // --- CAPPING LOGIC ---
+                const canvasContainerHeight = this.dom.canvasContainer.offsetHeight;
+                if (this.data.imageHeight > 0 && canvasContainerHeight > 0) {
+                    const imageAspectRatio = this.data.imageWidth / this.data.imageHeight;
+                    // Calculate the maximum width the canvas needs to display the image without horizontal padding.
+                    const maxUsefulCanvasWidth = canvasContainerHeight * imageAspectRatio;
+
+                    // If the user tries to drag past this useful width, cap it.
+                    if (newCanvasWidth > maxUsefulCanvasWidth) {
+                        newCanvasWidth = maxUsefulCanvasWidth;
+                    }
+                }
+                // --- END CAPPING LOGIC ---
+
+                this.data.verticalSplit = Math.max(0.1, Math.min(0.9, newCanvasWidth / totalWidth));
+                
+                const splitPercentage = this.data.verticalSplit * 100;
+                this.dom.canvasContainer.style.flexBasis = `${splitPercentage}%`;
+                this.dom.textareaContainer.style.flexBasis = `${100 - splitPercentage}%`;
+                this.scheduleDraw(); // Redraw canvas as its size changes
+            };
+
+            const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                this.requestSave(); // Save the new split position
+            };
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
     }
     
     updateState(key, value) {
@@ -99,6 +167,8 @@ export class AreaConditioningBox extends BaseBox {
     }
     
     updateInputs() {
+        this.dom.imageWidthInput.value = this.data.imageWidth;
+        this.dom.imageHeightInput.value = this.data.imageHeight;
         this.dom.areaXInput.value = this.data.areaX;
         this.dom.areaYInput.value = this.data.areaY;
         this.dom.areaWidthInput.value = this.data.areaWidth;
@@ -107,7 +177,34 @@ export class AreaConditioningBox extends BaseBox {
     }
 
     scheduleDraw() { requestAnimationFrame(() => this.draw()); }
-    draw() { this.drawCanvas(); this.drawHandle(); }
+    
+    draw() { 
+        this.drawCanvas(); 
+        this.adjustSplitOnResize();
+        this.drawHandles(); 
+    }
+
+    adjustSplitOnResize() {
+        if (!this.dom.mainContent || this.dom.mainContent.offsetWidth === 0) return;
+
+        const totalWidth = this.dom.mainContent.offsetWidth;
+        const canvasContainerHeight = this.dom.canvasContainer.offsetHeight;
+
+        if (this.data.imageHeight > 0 && canvasContainerHeight > 0) {
+            const imageAspectRatio = this.data.imageWidth / this.data.imageHeight;
+            const maxUsefulCanvasWidth = canvasContainerHeight * imageAspectRatio;
+            const currentCanvasWidth = this.dom.canvasContainer.offsetWidth;
+
+            if (currentCanvasWidth > maxUsefulCanvasWidth) {
+                this.data.verticalSplit = maxUsefulCanvasWidth / totalWidth;
+                this.data.verticalSplit = Math.max(0.1, Math.min(0.9, this.data.verticalSplit));
+                
+                const splitPercentage = this.data.verticalSplit * 100;
+                this.dom.canvasContainer.style.flexBasis = `${splitPercentage}%`;
+                this.dom.textareaContainer.style.flexBasis = `${100 - splitPercentage}%`;
+            }
+        }
+    }
 
     drawCanvas() {
         const canvas = this.dom.canvas;
@@ -138,11 +235,19 @@ export class AreaConditioningBox extends BaseBox {
         this.scale = drawW / imgW;
 
         this.ctx.clearRect(0, 0, canvas.width, canvas.height);
-        this.ctx.strokeStyle = "white"; this.ctx.lineWidth = 2;
+        this.ctx.strokeStyle = "rgba(255, 255, 255, 0.7)"; this.ctx.lineWidth = 1;
         this.ctx.strokeRect(offsetX, offsetY, drawW, drawH);
+
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+        this.ctx.font = "12px sans-serif";
+        this.ctx.textAlign = "left";
+        this.ctx.textBaseline = "top";
+        this.ctx.fillText(`${imgW} x ${imgH}`, offsetX + 5, offsetY + 5);
         
-        this.ctx.fillStyle = "rgba(100, 150, 255, 0.5)";
-        this.ctx.strokeStyle = "rgb(100, 150, 255)"; this.ctx.lineWidth = 1;
+        const isActive = this.activeDrag && this.activeDrag.isDragging;
+        this.ctx.fillStyle = isActive ? "rgba(150, 200, 255, 0.7)" : "rgba(100, 150, 255, 0.5)";
+        this.ctx.strokeStyle = isActive ? "rgb(150, 200, 255)" : "rgb(100, 150, 255)"; 
+        this.ctx.lineWidth = isActive ? 2 : 1;
         
         const areaX = offsetX + this.data.areaX * this.scale;
         const areaY = offsetY + this.data.areaY * this.scale;
@@ -153,18 +258,32 @@ export class AreaConditioningBox extends BaseBox {
         this.ctx.strokeRect(areaX, areaY, areaW, areaH);
     }
 
-    drawHandle() {
-        if (this.dom.handle) this.dom.handle.remove();
+    drawHandles() {
+        this.dom.canvasContainer.querySelectorAll('.ac-resize-handle').forEach(h => h.remove());
         if (!this.imageRect) return;
+        
         const { x: imgX, y: imgY } = this.imageRect;
         const { areaX, areaY, areaWidth, areaHeight } = this.data;
-        const x = imgX + (areaX + areaWidth) * this.scale;
-        const y = imgY + (areaY + areaHeight) * this.scale;
+        
+        const scaledX = imgX + areaX * this.scale;
+        const scaledY = imgY + areaY * this.scale;
+        const scaledW = areaWidth * this.scale;
+        const scaledH = areaHeight * this.scale;
 
-        this.dom.handle = document.createElement('div');
-        this.dom.handle.className = 'ac-resize-handle';
-        this.dom.handle.style.cssText = `left: ${x}px; top: ${y}px; transform: translate(-100%, -100%);`;
-        this.dom.canvasContainer.appendChild(this.dom.handle);
+        const handlePositions = {
+            'nw': { left: scaledX, top: scaledY }, 'n':  { left: scaledX + scaledW / 2, top: scaledY },
+            'ne': { left: scaledX + scaledW, top: scaledY }, 'e':  { left: scaledX + scaledW, top: scaledY + scaledH / 2 },
+            'se': { left: scaledX + scaledW, top: scaledY + scaledH }, 's':  { left: scaledX + scaledW / 2, top: scaledY + scaledH },
+            'sw': { left: scaledX, top: scaledY + scaledH }, 'w':  { left: scaledX, top: scaledY + scaledH / 2 },
+        };
+
+        for (const [key, pos] of Object.entries(handlePositions)) {
+            const handle = document.createElement('div');
+            handle.className = `ac-resize-handle ac-handle-${key}`;
+            handle.dataset.handle = key;
+            handle.style.cssText = `left: ${pos.left}px; top: ${pos.top}px; transform: translate(-50%, -50%);`;
+            this.dom.canvasContainer.appendChild(handle);
+        }
     }
 
     addCanvasListeners() {
@@ -173,21 +292,16 @@ export class AreaConditioningBox extends BaseBox {
 
         const onMouseDown = (e) => {
             e.stopPropagation();
+            const handle = e.target.dataset.handle;
             const mouse = this.getMousePos(e);
+            const isMove = !handle && this.isPointInArea(mouse);
             
-            const isResize = e.target.classList.contains('ac-resize-handle');
-            const isMove = this.isPointInArea(mouse);
+            let type = null;
+            if (handle) { type = 'resize'; } 
+            else if (isMove) { type = 'move'; }
 
-            let type = 'new';
-            if (isResize) type = 'resize';
-            else if (isMove) type = 'move';
-
-            this.activeDrag = { type, startX: mouse.x, startY: mouse.y, initialState: { ...this.data }, isDragging: false };
-
-            if (type === 'new') {
-                Object.assign(this.data, { areaX: mouse.x, areaY: mouse.y, areaWidth: 0, areaHeight: 0 });
-                this.scheduleDraw();
-                this.updateInputs();
+            if (type) {
+                this.activeDrag = { type, handle, startX: mouse.x, startY: mouse.y, initialState: { ...this.data }, isDragging: false };
             }
         };
 
@@ -206,38 +320,46 @@ export class AreaConditioningBox extends BaseBox {
 
             const { initialState } = this.activeDrag;
             const { imageWidth, imageHeight } = this.data;
-            let { areaX, areaY, areaWidth, areaHeight } = initialState;
+            const MIN_SIZE = 8;
 
             switch (this.activeDrag.type) {
-                case 'new':
-                    areaX = dx > 0 ? this.activeDrag.startX : mouse.x;
-                    areaY = dy > 0 ? this.activeDrag.startY : mouse.y;
-                    areaWidth = Math.abs(dx);
-                    areaHeight = Math.abs(dy);
-                    break;
                 case 'move':
-                    areaX += dx;
-                    areaY += dy;
+                    this.data.areaX = initialState.areaX + dx;
+                    this.data.areaY = initialState.areaY + dy;
                     break;
                 case 'resize':
-                    areaWidth += dx;
-                    areaHeight += dy;
+                    const handle = this.activeDrag.handle;
+                    if (handle.includes('e')) {
+                        const newWidth = initialState.areaWidth + dx;
+                        if (newWidth >= MIN_SIZE) this.data.areaWidth = newWidth;
+                    }
+                    if (handle.includes('w')) {
+                        const newWidth = initialState.areaWidth - dx;
+                        if (newWidth >= MIN_SIZE) { this.data.areaWidth = newWidth; this.data.areaX = initialState.areaX + dx; }
+                    }
+                    if (handle.includes('s')) {
+                        const newHeight = initialState.areaHeight + dy;
+                        if (newHeight >= MIN_SIZE) this.data.areaHeight = newHeight;
+                    }
+                    if (handle.includes('n')) {
+                        const newHeight = initialState.areaHeight - dy;
+                        if (newHeight >= MIN_SIZE) { this.data.areaHeight = newHeight; this.data.areaY = initialState.areaY + dy; }
+                    }
                     break;
             }
+            
+            this.data.areaX = Math.max(0, this.data.areaX);
+            this.data.areaY = Math.max(0, this.data.areaY);
+            if(this.data.areaX + this.data.areaWidth > imageWidth) {
+                if(this.activeDrag.type === 'move') this.data.areaX = imageWidth - this.data.areaWidth;
+                else this.data.areaWidth = imageWidth - this.data.areaX;
+            }
+            if(this.data.areaY + this.data.areaHeight > imageHeight) {
+                if(this.activeDrag.type === 'move') this.data.areaY = imageHeight - this.data.areaHeight;
+                else this.data.areaHeight = imageHeight - this.data.areaY;
+            }
 
-            if (areaX < 0) areaX = 0;
-            if (areaY < 0) areaY = 0;
-            if (areaWidth < 0) areaWidth = 0;
-            if (areaHeight < 0) areaHeight = 0;
-            if (areaX + areaWidth > imageWidth) areaX = imageWidth - areaWidth;
-            if (areaY + areaHeight > imageHeight) areaY = imageHeight - areaHeight;
-
-            Object.assign(this.data, { 
-                areaX: Math.round(areaX), 
-                areaY: Math.round(areaY), 
-                areaWidth: Math.round(areaWidth), 
-                areaHeight: Math.round(areaHeight) 
-            });
+            Object.assign(this.data, { areaX: Math.round(this.data.areaX), areaY: Math.round(this.data.areaY), areaWidth: Math.round(this.data.areaWidth), areaHeight: Math.round(this.data.areaHeight) });
             this.scheduleDraw();
             this.updateInputs();
         };
@@ -245,10 +367,9 @@ export class AreaConditioningBox extends BaseBox {
         const onMouseUp = (e) => {
             if (!this.activeDrag) return;
             e.stopPropagation();
-            if (this.activeDrag.isDragging) {
-                this.requestSave();
-            }
+            if (this.activeDrag.isDragging) this.requestSave();
             this.activeDrag = null;
+            this.scheduleDraw();
         };
 
         this.dom.canvasContainer.onmousedown = onMouseDown;
@@ -256,9 +377,8 @@ export class AreaConditioningBox extends BaseBox {
         document.addEventListener('mouseup', onMouseUp);
 
         this.dom.canvas.ondblclick = (e) => {
-            if (!this.activeDrag || !this.activeDrag.isDragging) {
-                this.handleCanvasDblClick(e);
-            }
+            if (this.activeDrag && this.activeDrag.isDragging) return;
+            this.handleCanvasDblClick(e);
         };
     }
     
@@ -283,67 +403,31 @@ export class AreaConditioningBox extends BaseBox {
         else newRegion = isLeft ? "bottom-left" : isHCenter ? "bottom-center" : "bottom-right";
 
         this.clickCycle.region = (this.clickCycle.region === newRegion) ? this.clickCycle.region : newRegion;
-        this.clickCycle.count = (this.clickCycle.region === newRegion) ? this.clickCycle.count + 1 : 0;
+        this.clickCycle.count = (this.clickCycle.region === newRegion) ? (this.clickCycle.count + 1) % 4 : 0;
         const cycle = this.clickCycle.count;
 
         switch (newRegion) {
             case "top-left":
-                this.data.areaX = 0; this.data.areaY = 0;
-                this.data.areaWidth = Math.round(imageWidth / (cycle % 2 + 2));
-                this.data.areaHeight = Math.round(imageHeight / (cycle % 2 + 2));
-                break;
+                this.data.areaX = 0; this.data.areaY = 0; this.data.areaWidth = Math.round(imageWidth / (cycle % 2 + 2)); this.data.areaHeight = Math.round(imageHeight / (cycle % 2 + 2)); break;
             case "top-center":
-                this.data.areaX = 0; this.data.areaY = 0;
-                this.data.areaWidth = imageWidth;
-                this.data.areaHeight = Math.round(imageHeight / (cycle % 3 + 2));
-                break;
+                this.data.areaX = 0; this.data.areaY = 0; this.data.areaWidth = imageWidth; this.data.areaHeight = Math.round(imageHeight / (cycle % 3 + 2)); break;
             case "top-right":
-                this.data.areaY = 0;
-                this.data.areaWidth = Math.round(imageWidth / (cycle % 2 + 2));
-                this.data.areaX = imageWidth - this.data.areaWidth;
-                this.data.areaHeight = Math.round(imageHeight / (cycle % 2 + 2));
-                break;
+                this.data.areaY = 0; this.data.areaWidth = Math.round(imageWidth / (cycle % 2 + 2)); this.data.areaX = imageWidth - this.data.areaWidth; this.data.areaHeight = Math.round(imageHeight / (cycle % 2 + 2)); break;
             case "middle-left":
-                this.data.areaX = 0; this.data.areaY = 0;
-                this.data.areaWidth = Math.round(imageWidth / (cycle % 3 + 2));
-                this.data.areaHeight = imageHeight;
-                break;
+                this.data.areaX = 0; this.data.areaY = 0; this.data.areaWidth = Math.round(imageWidth / (cycle % 3 + 2)); this.data.areaHeight = imageHeight; break;
             case "center":
-                if (cycle === 0) {
-                    this.data.areaX = 0; this.data.areaY = 0;
-                    this.data.areaWidth = imageWidth; this.data.areaHeight = imageHeight;
-                } else {
-                    const divisor = (cycle % 2) + 2;
-                    this.data.areaWidth = imageWidth;
-                    this.data.areaHeight = Math.round(imageHeight / divisor);
-                    this.data.areaX = 0;
-                    this.data.areaY = Math.round((imageHeight - this.data.areaHeight) / 2);
-                }
+                if (cycle === 0) { this.data.areaX = 0; this.data.areaY = 0; this.data.areaWidth = imageWidth; this.data.areaHeight = imageHeight; } 
+                else if (cycle === 1) { const d = 2; this.data.areaWidth = Math.round(imageWidth/d); this.data.areaHeight = Math.round(imageHeight/d); this.data.areaX = Math.round((imageWidth-this.data.areaWidth)/2); this.data.areaY = Math.round((imageHeight-this.data.areaHeight)/2); }
+                else { const d = (cycle % 2)+2; this.data.areaWidth = imageWidth; this.data.areaHeight = Math.round(imageHeight/d); this.data.areaX = 0; this.data.areaY = Math.round((imageHeight-this.data.areaHeight)/2); }
                 break;
             case "middle-right":
-                this.data.areaY = 0;
-                this.data.areaWidth = Math.round(imageWidth / (cycle % 3 + 2));
-                this.data.areaX = imageWidth - this.data.areaWidth;
-                this.data.areaHeight = imageHeight;
-                break;
+                this.data.areaY = 0; this.data.areaWidth = Math.round(imageWidth / (cycle % 3 + 2)); this.data.areaX = imageWidth - this.data.areaWidth; this.data.areaHeight = imageHeight; break;
             case "bottom-left":
-                this.data.areaX = 0;
-                this.data.areaWidth = Math.round(imageWidth / (cycle % 2 + 2));
-                this.data.areaHeight = Math.round(imageHeight / (cycle % 2 + 2));
-                this.data.areaY = imageHeight - this.data.areaHeight;
-                break;
+                this.data.areaX = 0; this.data.areaWidth = Math.round(imageWidth/(cycle%2+2)); this.data.areaHeight = Math.round(imageHeight/(cycle%2+2)); this.data.areaY = imageHeight - this.data.areaHeight; break;
             case "bottom-center":
-                this.data.areaX = 0;
-                this.data.areaWidth = imageWidth;
-                this.data.areaHeight = Math.round(imageHeight / (cycle % 3 + 2));
-                this.data.areaY = imageHeight - this.data.areaHeight;
-                break;
+                this.data.areaX = 0; this.data.areaWidth = imageWidth; this.data.areaHeight = Math.round(imageHeight/(cycle%3+2)); this.data.areaY = imageHeight-this.data.areaHeight; break;
             case "bottom-right":
-                this.data.areaWidth = Math.round(imageWidth / (cycle % 2 + 2));
-                this.data.areaHeight = Math.round(imageHeight / (cycle % 2 + 2));
-                this.data.areaX = imageWidth - this.data.areaWidth;
-                this.data.areaY = imageHeight - this.data.areaHeight;
-                break;
+                this.data.areaWidth = Math.round(imageWidth/(cycle%2+2)); this.data.areaHeight = Math.round(imageHeight/(cycle%2+2)); this.data.areaX = imageWidth-this.data.areaWidth; this.data.areaY = imageHeight-this.data.areaHeight; break;
         }
 
         this.requestSave();
@@ -373,6 +457,9 @@ export class AreaConditioningBox extends BaseBox {
             areaX: 64, areaY: 64,
             areaWidth: 256, areaHeight: 256,
             strength: 1.0,
+            verticalSplit: 0.5,
+            commandLinks: {},
         };
     }
 }
+
