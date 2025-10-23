@@ -14,19 +14,20 @@ export class Toolbar {
     }
 
     _init() {
-        this.toolbarEl.innerHTML = ''; 
-        
+        this.toolbarEl.innerHTML = '';
+
         this.saveButton = this._createButton("Save", () => this.handleSave());
         this.loadButton = this._createButton("Load", () => this.handleLoad());
         const fitViewButton = this._createButton("Fit View", () => this.fitViewToContent());
         const themeButton = this._createButton("Theme", () => this.handleTheme());
-        
+
         const { gridLabel, gridSelect } = this._createGridSizeSelector();
         const toggleGridButton = this._createToggleGridButton();
-        
+        const togglePeriodBreakButton = this._createTogglePeriodBreakButton();
+
         const iteratorControl = this._createIteratorControl();
 
-        this.toolbarEl.append(this.saveButton, this.loadButton, fitViewButton, themeButton, gridLabel, gridSelect, toggleGridButton, iteratorControl);
+        this.toolbarEl.append(this.saveButton, this.loadButton, fitViewButton, themeButton, togglePeriodBreakButton, gridLabel, gridSelect, toggleGridButton, iteratorControl);
     }
 
     handleTheme() {
@@ -48,11 +49,11 @@ export class Toolbar {
             this.stateManager.save();
             this.iteratorDisplay.textContent = `Run: 0`;
         });
-        
+
         container.append(this.iteratorDisplay, resetButton);
         return container;
     }
-    
+
     _createButton(text, onClick) {
         const button = document.createElement("button");
         button.textContent = text;
@@ -66,8 +67,8 @@ export class Toolbar {
 
         const gridSelect = document.createElement("select");
         [0, 10, 20, 50, 100, 200, 400].forEach(size => {
-            const option = document.createElement("option"); 
-            option.value = size; 
+            const option = document.createElement("option");
+            option.value = size;
             option.textContent = size === 0 ? "Off" : `${size}px`;
             gridSelect.appendChild(option);
         });
@@ -92,7 +93,19 @@ export class Toolbar {
         );
         return button;
     }
-    
+
+    _createTogglePeriodBreakButton() {
+        const button = this._createButton(
+            this.stateManager.state.periodIsBreak ? "Periods = BREAK" : "Periods = .",
+            () => {
+                this.stateManager.state.periodIsBreak = !this.stateManager.state.periodIsBreak;
+                button.textContent = this.stateManager.state.periodIsBreak ? "Periods = BREAK" : "Periods = .";
+                this.stateManager.save();
+            }
+        );
+        return button;
+    }
+
     _setLoading(isLoading) {
         this._isLoading = isLoading;
         this.saveButton.disabled = isLoading;
@@ -116,7 +129,7 @@ export class Toolbar {
             let effectiveWidth = box.width;
             let effectiveHeight = box.height;
 
-            switch(box.type) {
+            switch (box.type) {
                 case 'area':
                     effectiveWidth = Math.max(box.width, 500);
                     effectiveHeight = Math.max(box.height, 500);
@@ -152,7 +165,7 @@ export class Toolbar {
         state.zoom = zoom;
         state.pan.x = -bounds.minX * zoom + (viewW - contentW * zoom) / 2;
         state.pan.y = -bounds.minY * zoom + (viewH - contentH * zoom) / 2;
-        
+
         this.stateManager.save();
         this.renderer.render();
     }
@@ -172,7 +185,7 @@ export class Toolbar {
 
         const confirmSaveButton = this._createButton("Save", async () => {
             const filename = input.value.trim();
-            
+
             const invalidChars = /[\\/:\*\?"<>\|]|\.\./;
             if (!filename || !filename.endsWith('.txt') || invalidChars.test(filename)) {
                 this._showError("Validation Error", "Filename must be valid and end with .txt");
@@ -200,7 +213,7 @@ export class Toolbar {
         this.modal.show("Save Content to File", body, [confirmSaveButton]);
         input.focus();
     }
-    
+
     async handleLoad() {
         if (this._isLoading) return;
         if (!this.renderer.lastActiveTextarea) {
@@ -216,7 +229,7 @@ export class Toolbar {
             if (!response.ok) throw new Error(`Server error: ${response.statusText}`);
             const files = await response.json();
             if (files.error) throw new Error(files.error);
-            
+
             const body = document.createElement('div');
             if (files.length === 0) {
                 body.textContent = "No text files found in the 'user/textfiles' folder.";
@@ -246,12 +259,12 @@ export class Toolbar {
         if (this._isLoading) return;
         this._setLoading(true);
         this.loadButton.textContent = "Loading...";
-        
+
         try {
             const response = await fetch(`/thoughtbubble/load?filename=${encodeURIComponent(filename)}`);
             const data = await response.json();
             if (data.error) throw new Error(data.error);
-            
+
             this.renderer.lastActiveTextarea.value = data.content;
             this.renderer.lastActiveTextarea.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
             this.modal.close();

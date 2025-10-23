@@ -90,6 +90,7 @@ class ThoughtBubbleNode:
         try:
             data = json.loads(canvas_data)
             iterator = data.get("iterator", 0)
+            period_is_break = data.get("periodIsBreak", True) # <--- NEW: Get state
             boxes = data.get("boxes", [])
             output_box_content, maximized_box = None, None
             
@@ -123,7 +124,8 @@ class ThoughtBubbleNode:
                 parser = CanvasParser(
                     box_map, self.WILDCARD_CACHE, self.TEXTFILE_DIRECTORY, rng, iterator, 
                     all_control_vars_by_id, all_control_vars_by_name, command_links,
-                    self.TEXTFILE_CACHE # <-- NEW: Pass the cache to the parser
+                    self.TEXTFILE_CACHE,
+                    period_is_break=period_is_break # <--- NEW: Pass state
                 )
                 positive_prompt, negative_prompt = parser.parse(raw_prompt_source)
                 
@@ -231,5 +233,3 @@ class ThoughtBubbleNode:
                 print(f"Thought Bubble Warning: Could not find a file for LoRA '{lora_name}'")
         
         return model_out, clip_out
-
-

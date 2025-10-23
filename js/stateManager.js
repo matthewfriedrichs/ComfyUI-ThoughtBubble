@@ -24,6 +24,7 @@ export class StateManager {
             pan: { x: 0, y: 0 }, zoom: 1.0, gridSize: 100, showGrid: true, savedView: null,
             iterator: 0,
             theme: {},
+            periodIsBreak: true, // <--- NEW: Enabled by default
         };
         try {
             const loadedState = JSON.parse(this.dataWidget.value);
@@ -42,16 +43,16 @@ export class StateManager {
             }
             return value;
         };
-        
+
         const newValue = JSON.stringify(this.state, replacer);
         this.dataWidget.value = newValue;
         this.lastKnownValue = newValue;
     }
-    
+
     getBoxById(boxId) {
         return this.state.boxes.find(b => b.id === boxId);
     }
-    
+
     snapToGrid(value) {
         if (!this.state || this.state.gridSize === 0) return value;
         return Math.round(value / this.state.gridSize) * this.state.gridSize;
@@ -65,14 +66,14 @@ export class StateManager {
         const h = this.snapToGrid(height || 200);
         const x = this.snapToGrid(worldX);
         const y = this.snapToGrid(worldY);
-        
+
         let newBoxState = BoxClass.createDefaultState(x, y, w, h);
-        
+
         const newBox = { id: uuidv4(), ...newBoxState, displayState: "normal" };
         this.state.boxes.push(newBox);
         this.save();
     }
-    
+
     deleteBox(boxId) {
         const box = this.state.boxes.find(b => b.id === boxId);
         if (box && box.displayState === 'maximized' && this.state.savedView) {
@@ -81,9 +82,9 @@ export class StateManager {
         this.state.boxes = this.state.boxes.filter(b => b.id !== boxId);
         this.save();
     }
-    
+
     unmaximize(box) {
-        if (box.old) { 
+        if (box.old) {
             Object.assign(box, { x: box.old.x, y: box.old.y, width: box.old.width, height: box.old.height });
             delete box.old;
         }

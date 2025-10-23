@@ -11,7 +11,7 @@ import unicodedata
 from . import commands
 
 class CanvasParser:
-    def __init__(self, box_map, wildcard_data, textfiles_directory, rng, iterator=0, control_vars_by_id=None, control_vars_by_name=None, command_links=None, textfile_cache=None):
+    def __init__(self, box_map, wildcard_data, textfiles_directory, rng, iterator=0, control_vars_by_id=None, control_vars_by_name=None, command_links=None, textfile_cache=None, period_is_break=True):
         self.box_map = {k.lower(): v for k, v in box_map.items()}
         self.wildcards = wildcard_data
         self.textfiles_directory = textfiles_directory # Store the directory path
@@ -23,6 +23,7 @@ class CanvasParser:
         self.command_links = command_links if command_links is not None else {}
         self.textfile_cache = textfile_cache if textfile_cache is not None else {}
         self.embedding_cache = {} 
+        self.period_is_break = period_is_break
 
         self.COMMAND_PRIORITY = [
             'HIDDEN_COMMAND', 'O_COMMAND',  
@@ -120,7 +121,7 @@ class CanvasParser:
                 'RANDOM_COMMAND': list(re.finditer(r'\b[rR](\d*)\s*\(', text)),
                 'AREA_COMMAND': list(re.finditer(r'\b[aA](\d*)\s*\(', text)),
                 'V_COMMAND': list(re.finditer(r'\b[vV](\d*)\s*\(' , text)), # The one v() command
-                # V_SET_COMMAND and V_GET_COMMAND are removed
+                # V_SET and V_GET are removed
             }
             innermost_command, max_depth = None, -1
             all_matches = [m for k in self.COMMAND_PRIORITY for m in searches.get(k, [])]
@@ -169,13 +170,82 @@ class CanvasParser:
         self.variables, self.loras_to_load, self.areas_to_apply = {}, [], []
         
         resolved_text = self._recursive_resolve(text)
+        
+        # --- NEW: NEGATION TOGGLE LOGIC: !word ---
+        positive_toggled_content = []
+
+        def extract_and_remove_neg_toggles(match):
+            # Case 1: Negative-to-Positive Toggle (e.g., -(ugly, !beautiful_eyes))
+            neg_content = match.group(1)
             
-        negative_parts = re.findall(r'###NEG###(.*?)###/NEG###', resolved_text, re.DOTALL)
-        negative_prompt = ", ".join(p.strip() for p in negative_parts if p.strip())
-        positive_prompt = re.sub(r'###NEG###.*?###/NEG###', '', resolved_text)
+            # Find all !words inside this negative content block
+            def process_toggle(toggle_match):
+                toggled_word = toggle_match.group(1)
+                # CRITICAL FIX: Replace underscore with space ONLY for the toggled word
+                positive_toggled_content.append(toggled_word.replace('_', ' ')) 
+                return "" # Remove the !word from the negative content block
+            
+            # The negative content is modified: !word is replaced by an empty string
+            new_neg_content = re.sub(r'!\s*([a-zA-Z0-9_]+)', process_toggle, neg_content)
+            
+            # Reconstruct the ###NEG### block with the modified content
+            return f"###NEG###{new_neg_content}###/NEG###"
+            
+        # Apply the negative-to-positive toggle logic. This modifies the existing ###NEG### blocks and populates positive_toggled_content
+        toggled_text = re.sub(r'###NEG###(.*?)###/NEG###', extract_and_remove_neg_toggles, resolved_text, flags=re.DOTALL)
         
-        # This new line strips out the hidden tags and their content before final formatting.
-        positive_prompt = re.sub(r'###HIDDEN_START###.*?###HIDDEN_END###', '', positive_prompt)
+        # 2. Positive-to-Negative Toggle: Wrap !word in positive text into ###NEG### tags.
+        def handle_pos_to_neg_toggle(match):
+            toggled_word = match.group(1)
+            # CRITICAL FIX: Replace underscore with space ONLY for the toggled word
+            processed_word = toggled_word.replace('_', ' ')
+            # Wrap in the full NEG tag, which will be extracted later
+            return f"###NEG###{processed_word}###/NEG###"
+            
+        # Apply to all remaining '!' in the text
+        toggled_text = re.sub(r'!\s*([a-zA-Z0-9_]+)', handle_pos_to_neg_toggle, toggled_text)
         
-        positive_prompt = ", ".join(filter(None, [p.strip() for p in re.sub(r'\s+', ' ', positive_prompt).strip().split(',')]))
+        # 3. Separate Prompts
+        
+        # Extract all final negative content (Underscores in untoggled negative text remain)
+        negative_prompt_raw_parts = re.findall(r'###NEG###(.*?)###/NEG###', toggled_text, re.DOTALL)
+        negative_prompt = " ".join(part.strip() for part in negative_prompt_raw_parts if part.strip())
+        
+        # Base positive text is what remains after stripping all ###NEG### tags (Underscores in untoggled positive text remain)
+        base_positive_text = re.sub(r'###NEG###.*?###/NEG###', '', toggled_text, flags=re.DOTALL).strip()
+        
+        # Reconstruct the full positive prompt (base text + negative-to-positive toggles)
+        # Note: Toggled text already has its underscores replaced. Base text does not.
+        full_positive_text = base_positive_text + " " + " ".join(positive_toggled_content)
+        
+        # 4. Final cleaning and formatting
+        
+        # Underscore replacement for *untoggled* text is now correctly omitted.
+
+        # --- PERIOD BREAK TAGGING (CORRECTED) ---
+        def protect_decimal(match):
+            # Match is expected to be something like '1.0'
+            return match.group(0).replace('.', '###DECIMAL_PROTECT###', 1)
+
+        break_tagged_positive_prompt = full_positive_text
+        if self.period_is_break:
+            # Protect all floating point numbers (e.g., 1.0)
+            break_tagged_positive_prompt = re.sub(r'\d\.\d', protect_decimal, full_positive_text)
+            
+            # Replace all remaining periods (sentence/phrase separators) with the BREAK tag.
+            break_tagged_positive_prompt = break_tagged_positive_prompt.replace('.', ' ###PERIOD_BREAK_TAG### ')
+            
+            # Restore the decimal points
+            break_tagged_positive_prompt = break_tagged_positive_prompt.replace('###DECIMAL_PROTECT###', '.')
+        
+        # Final cleaning and splitting by comma
+        positive_prompt = ", ".join(filter(None, [p.strip() for p in re.sub(r'\s+', ' ', break_tagged_positive_prompt).strip().split(',')]))
+        
+        # Convert the unique tag to the ComfyUI BREAK keyword if enabled.
+        if self.period_is_break:
+            positive_prompt = positive_prompt.replace('###PERIOD_BREAK_TAG###', ' BREAK ')
+            
+        # The negative prompt is cleaned simply (no period break logic for negative)
+        negative_prompt = ", ".join(filter(None, [p.strip() for p in re.sub(r'\s+', ' ', negative_prompt).strip().split(',')]))
+        
         return positive_prompt, negative_prompt
