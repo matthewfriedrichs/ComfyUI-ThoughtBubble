@@ -8,6 +8,9 @@ import json
 # --- Helper Functions for File Operations ---
 textfiles_directory = os.path.join(os.path.dirname(folder_paths.get_input_directory()), 'user', 'textfiles')
 themes_directory = os.path.join(os.path.dirname(folder_paths.get_input_directory()), 'user', 'thoughtbubble_themes')
+# --- NEW: Define the internal themes directory ---
+internal_themes_directory = os.path.join(os.path.dirname(__file__), 'themes') 
+
 MAX_FILE_SIZE_MB = 5
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
@@ -107,6 +110,18 @@ async def list_themes(request):
     files = [f for f in os.listdir(themes_directory) if f.endswith('.json') and f != 'default.json']
     return web.json_response(files)
 
+# --- NEW: Endpoint to list internal default themes ---
+@server.PromptServer.instance.routes.get("/thoughtbubble/themes/list_default")
+async def list_default_themes(request):
+    try:
+        if not os.path.exists(internal_themes_directory):
+            return web.json_response([]) # Return empty list if themes folder doesn't exist
+        
+        files = [f for f in os.listdir(internal_themes_directory) if f.endswith('.json')]
+        return web.json_response(files)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
 @server.PromptServer.instance.routes.post("/thoughtbubble/themes/save")
 async def save_theme(request):
     ensure_user_directories()
@@ -134,12 +149,23 @@ async def load_theme(request):
     ensure_user_directories()
     filename = request.query.get('filename')
     secure_filename = os.path.basename(filename)
-    filepath = os.path.join(themes_directory, secure_filename)
+    
+    # --- MODIFIED: Check user directory first, then internal directory ---
+    user_filepath = os.path.join(themes_directory, secure_filename)
+    internal_filepath = os.path.join(internal_themes_directory, secure_filename)
+    
+    filepath_to_load = None
+    
+    # Prioritize user theme
+    if os.path.exists(user_filepath) and is_path_safe(themes_directory, user_filepath):
+        filepath_to_load = user_filepath
+    # Fall back to internal theme
+    elif os.path.exists(internal_filepath) and is_path_safe(internal_themes_directory, internal_filepath):
+        filepath_to_load = internal_filepath
+    else:
+        return web.json_response({"error": "File not found or access denied."}, status=404)
 
-    if not os.path.exists(filepath) or not is_path_safe(themes_directory, filepath):
-        return web.json_response({"error": "File not found"}, status=404)
-
-    with open(filepath, 'r', encoding='utf-8') as f:
+    with open(filepath_to_load, 'r', encoding='utf-8') as f:
         return web.json_response(json.load(f))
 
 @server.PromptServer.instance.routes.post("/thoughtbubble/themes/default/set")

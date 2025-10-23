@@ -4,9 +4,7 @@
 # imports all the command modules to make them accessible from the outside.
 
 from . import command_area
-from . import command_c
 from . import command_embed
-from . import command_force
 from . import command_h
 from . import command_i
 from . import command_if

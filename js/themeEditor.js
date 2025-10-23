@@ -13,27 +13,27 @@ export class ThemeEditor {
         const footerButtons = this.createFooterButtons();
         this.modal.show("Theme Editor", body, footerButtons);
     }
-    
+
     createEditorBody() {
         const container = document.createElement('div');
         container.className = 'thought-bubble-theme-editor';
-        
+
         const currentTheme = this.stateManager.state.theme || {};
 
         for (const key in DEFAULT_THEME) {
             const row = document.createElement('div');
             row.className = 'theme-editor-row';
-            
+
             const label = document.createElement('label');
             label.textContent = key.replace('--tb-', '').replace(/-/g, ' ');
-            
+
             const isColor = key.toLowerCase().includes('color');
             const input = document.createElement('input');
             input.type = isColor ? 'color' : 'text';
             input.value = currentTheme[key] || DEFAULT_THEME[key];
-            
+
             const textInput = isColor ? document.createElement('input') : null;
-            if(isColor) {
+            if (isColor) {
                 textInput.type = 'text';
                 textInput.value = input.value;
                 input.addEventListener('input', () => textInput.value = input.value);
@@ -48,15 +48,15 @@ export class ThemeEditor {
             };
 
             input.addEventListener('input', liveUpdate);
-            if(textInput) textInput.addEventListener('change', liveUpdate);
+            if (textInput) textInput.addEventListener('change', liveUpdate);
 
             row.append(label, input);
-            if(textInput) row.appendChild(textInput);
+            if (textInput) row.appendChild(textInput);
             container.appendChild(row);
         }
         return container;
     }
-    
+
     createFooterButtons() {
         const saveButton = document.createElement('button');
         saveButton.textContent = "Save Theme";
@@ -65,7 +65,7 @@ export class ThemeEditor {
         const loadButton = document.createElement('button');
         loadButton.textContent = "Load Theme";
         loadButton.onclick = () => this.handleLoadTheme();
-        
+
         const defaultButton = document.createElement('button');
         defaultButton.textContent = "Set as Default";
         defaultButton.onclick = () => this.handleSetDefault();
@@ -78,10 +78,10 @@ export class ThemeEditor {
             this.modal.close();
             this.show(); // Re-open to show reset values
         };
-        
+
         return [resetButton, loadButton, saveButton, defaultButton];
     }
-    
+
     async handleSaveTheme() {
         const filename = prompt("Enter a name for your theme (e.g., 'my-theme'). It will be saved as a .json file in your user folder.");
         if (!filename) return;
@@ -103,23 +103,26 @@ export class ThemeEditor {
     async handleLoadTheme() {
         const loadModal = new ThoughtBubbleModal();
         try {
+            // --- MODIFIED: Fetch from both user and default theme endpoints ---
             const [userThemesRes, defaultThemesRes] = await Promise.all([
                 fetch('/thoughtbubble/themes/list'),
-                fetch('/thoughtbubble/themes/list_default')
+                fetch('/thoughtbubble/themes/list_default') // The new endpoint
             ]);
 
             if (!userThemesRes.ok || !defaultThemesRes.ok) throw new Error('Failed to fetch theme lists.');
 
             const userThemes = await userThemesRes.json();
             const defaultThemes = await defaultThemesRes.json();
-            
+
             const listContainer = document.createElement('div');
 
+            // Helper to create a theme item in the list
             const createItem = (file) => {
                 const item = document.createElement('div');
                 item.textContent = file.replace('.json', '');
                 item.className = 'thought-bubble-file-item';
                 item.onclick = async () => {
+                    // The /load endpoint now checks both locations, so this works as-is
                     const loadResponse = await fetch(`/thoughtbubble/themes/load?filename=${file}`);
                     const themeData = await loadResponse.json();
                     this.stateManager.state.theme = themeData;
@@ -131,6 +134,9 @@ export class ThemeEditor {
                 listContainer.appendChild(item);
             };
 
+            // --- MODIFIED: Display themes in categorized sections ---
+
+            // Display User Themes
             if (userThemes.length > 0) {
                 const header = document.createElement('div');
                 header.className = 'thought-bubble-theme-header';
@@ -139,8 +145,10 @@ export class ThemeEditor {
                 userThemes.forEach(createItem);
             }
 
+            // Display Default Themes
             if (defaultThemes.length > 0) {
                 if (userThemes.length > 0) {
+                    // Add a separator if both lists have content
                     listContainer.appendChild(document.createElement('hr'));
                 }
                 const header = document.createElement('div');
@@ -149,11 +157,12 @@ export class ThemeEditor {
                 listContainer.appendChild(header);
                 defaultThemes.forEach(createItem);
             }
-            
+
+            // Handle case where no themes are found at all
             if (userThemes.length === 0 && defaultThemes.length === 0) {
                 listContainer.textContent = "No themes found. Save a theme to get started!";
             }
-            
+
             loadModal.show('Load Theme', listContainer);
 
         } catch (error) {
@@ -173,7 +182,7 @@ export class ThemeEditor {
             if (!response.ok) throw new Error('Failed to set default theme.');
             alert("Current theme set as default for new nodes.");
         } catch (error) {
-             console.error("Failed to set default theme:", error);
+            console.error("Failed to set default theme:", error);
             alert(`Error: ${error.message}`);
         }
     }

@@ -21,31 +21,34 @@ class CanvasParser:
         self.control_vars_by_id = control_vars_by_id if control_vars_by_id is not None else {}
         self.control_vars_by_name = control_vars_by_name if control_vars_by_name is not None else {}
         self.command_links = command_links if command_links is not None else {}
-        self.replacements = []
         self.textfile_cache = textfile_cache if textfile_cache is not None else {}
+        self.embedding_cache = {} 
 
         self.COMMAND_PRIORITY = [
-            'HIDDEN_COMMAND', 'V_COMMAND', 'O_COMMAND', 'C_COMMAND', 'I_COMMAND', 'WILDCARD_COMMAND', 
+            'HIDDEN_COMMAND', 'O_COMMAND',  
+            'I_COMMAND', 'WILDCARD_COMMAND', 
             'RANDOM_COMMAND', 'NEG_COMMAND', 
-            'LORA_COMMAND', 'AREA_COMMAND', 'FORCE_COMMAND',
+            'V_COMMAND', # The one 'v' command
+            'LORA_COMMAND', 'EMBED_COMMAND', 
+            'AREA_COMMAND',
             'IF_COMMAND', 'MULTI_IF_COMMAND', 
         ]
 
         # The handler dictionary is now built from the imported commands package.
         self.command_handlers = {
             'AREA_COMMAND': commands.command_area.execute,
-            'C_COMMAND': commands.command_c.execute,
-            'FORCE_COMMAND': commands.command_force.execute,
             'HIDDEN_COMMAND': commands.command_h.execute,
             'I_COMMAND': commands.command_i.execute,
             'IF_COMMAND': commands.command_if.execute,
             'LORA_COMMAND': commands.command_lora.execute,
+            'EMBED_COMMAND': commands.command_embed.execute, 
             'MULTI_IF_COMMAND': commands.command_multi_if.execute,
             'NEG_COMMAND': commands.command_neg.execute,
-            'O_COMMAND': commands.command_o.execute, # Add the new handler
+            'O_COMMAND': commands.command_o.execute, 
             'RANDOM_COMMAND': commands.command_r.execute,
-            'V_COMMAND': commands.command_v.execute,
+            'V_COMMAND': commands.command_v.execute, # Points to the new master v command
             'WILDCARD_COMMAND': commands.command_w.execute,
+            # V_SET and V_GET are removed
         }
     
     def _parse_command(self, kind, value, **kwargs):
@@ -55,18 +58,6 @@ class CanvasParser:
         return ""
 
     # --- Utility and Finalization Methods ---
-    def _levenshtein_distance(self, s1, s2):
-        if len(s1) < len(s2): return self._levenshtein_distance(s2, s1)
-        if len(s2) == 0: return len(s1)
-        previous_row = range(len(s2) + 1)
-        for i, c1 in enumerate(s1):
-            current_row = [i + 1]
-            for j, c2 in enumerate(s2):
-                insertions, deletions = previous_row[j + 1] + 1, current_row[j] + 1
-                substitutions = previous_row[j] + (c1 != c2)
-                current_row.append(min(insertions, deletions, substitutions))
-            previous_row = current_row
-        return previous_row[-1]
 
     def _find_matching_paren(self, text, start_index):
         depth = 1
@@ -118,18 +109,18 @@ class CanvasParser:
         while True:
             searches = {
                 'I_COMMAND': list(re.finditer(r'\b[iI](\d*)\s*\(', text)),
-                'V_COMMAND': list(re.finditer(r'\b[vV](\d*)\s*\(', text)),
-                'O_COMMAND': list(re.finditer(r'\b[oO](\d*)\s*\(', text)), # Add the new regex
-                'C_COMMAND': list(re.finditer(r'\b[cC](\d*)\s*\(', text)),
+                'O_COMMAND': list(re.finditer(r'\b[oO](\d*)\s*\(', text)), 
                 'NEG_COMMAND': list(re.finditer(r'-(\d*)\s*\(', text)),
                 'IF_COMMAND': list(re.finditer(r'\?(\d*)\s*\(', text)),
                 'MULTI_IF_COMMAND': list(re.finditer(r'\?\?(\d*)\s*\(', text)),
                 'HIDDEN_COMMAND': list(re.finditer(r'\b[hH](\d*)\s*\(', text)),
-                'FORCE_COMMAND': list(re.finditer(r'\b[fF](\d*)\s*\(', text)),
                 'LORA_COMMAND': list(re.finditer(r'\b(lora|lra)(\d*)\s*\(', text, re.IGNORECASE)),
+                'EMBED_COMMAND': list(re.finditer(r'\bembed(\d*)\s*\(', text, re.IGNORECASE)),
                 'WILDCARD_COMMAND': list(re.finditer(r'\b[wW](\d*)\s*\(', text)),
                 'RANDOM_COMMAND': list(re.finditer(r'\b[rR](\d*)\s*\(', text)),
                 'AREA_COMMAND': list(re.finditer(r'\b[aA](\d*)\s*\(', text)),
+                'V_COMMAND': list(re.finditer(r'\b[vV](\d*)\s*\(' , text)), # The one v() command
+                # V_SET_COMMAND and V_GET_COMMAND are removed
             }
             innermost_command, max_depth = None, -1
             all_matches = [m for k in self.COMMAND_PRIORITY for m in searches.get(k, [])]
@@ -159,8 +150,12 @@ class CanvasParser:
                     full_command_end = content_end + 1
 
             if full_command_end == -1: break 
-
+            
+            # This is the key: The content *inside* the parens is resolved FIRST.
+            # So v(myvar|v(box)) becomes v(myvar|box_content)
+            # THEN the parser processes the outer v()
             content = self._recursive_resolve(text[paren_start + 1:content_end])
+            
             kwargs = {'start_index': innermost_command.start()}
             if kind in ['IF_COMMAND', 'MULTI_IF_COMMAND']: 
                 kwargs['context'] = text[:innermost_command.start()]
@@ -171,49 +166,9 @@ class CanvasParser:
         return text
 
     def parse(self, text):
-        self.variables, self.loras_to_load, self.areas_to_apply, self.replacements = {}, [], [], []
+        self.variables, self.loras_to_load, self.areas_to_apply = {}, [], []
         
         resolved_text = self._recursive_resolve(text)
-
-        # The replacement loop now handles the new conditional format.
-        for item in self.replacements:
-            # Unpack the item, supporting both old and new formats.
-            if len(item) == 3:
-                fuzzy_words, replace_text, condition_words = item
-            else: # Support for the old f(word|replacement) syntax
-                fuzzy_words, replace_text = item
-                condition_words = []
-
-            # Check if all conditions are met in the current state of the prompt.
-            if condition_words:
-                all_conditions_met = all(
-                    re.search(r'\b' + re.escape(cond.lower()) + r'\b', resolved_text.lower()) 
-                    for cond in condition_words
-                )
-                if not all_conditions_met:
-                    continue # Skip this replacement if conditions are not met.
-
-            # If conditions are met (or there are none), proceed with the replacement.
-            text_words, new_text_words, i = resolved_text.split(), [], 0
-            while i < len(text_words):
-                is_match = False
-                if i + len(fuzzy_words) <= len(text_words):
-                    is_match = True
-                    for j in range(len(fuzzy_words)):
-                        word_to_check = re.sub(r'[^a-zA-Z]', '', text_words[i+j])
-                        find_word, threshold = fuzzy_words[j]
-                        if not word_to_check and not find_word: continue
-                        max_len = max(len(word_to_check), len(find_word))
-                        distance = self._levenshtein_distance(word_to_check, find_word)
-                        similarity = (1 - distance / max_len) * 100 if max_len > 0 else 100
-                        if similarity < threshold: is_match = False; break
-                if is_match:
-                    new_text_words.append(replace_text)
-                    i += len(fuzzy_words)
-                else:
-                    new_text_words.append(text_words[i])
-                    i += 1
-            resolved_text = " ".join(new_text_words)
             
         negative_parts = re.findall(r'###NEG###(.*?)###/NEG###', resolved_text, re.DOTALL)
         negative_prompt = ", ".join(p.strip() for p in negative_parts if p.strip())
@@ -224,4 +179,3 @@ class CanvasParser:
         
         positive_prompt = ", ".join(filter(None, [p.strip() for p in re.sub(r'\s+', ' ', positive_prompt).strip().split(',')]))
         return positive_prompt, negative_prompt
-
