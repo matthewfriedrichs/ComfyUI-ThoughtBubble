@@ -81,9 +81,23 @@ class CanvasParser:
 
     def _get_list_from_content(self, content):
         options = self._split_toplevel_options(content)
-        wildcard_name = options[0].strip().lower()
-        if len(options) == 1 and wildcard_name in self.wildcards:
-            return self.wildcards[wildcard_name]
+        list_key = options[0].strip().lower()
+
+        # --- NEW: Check if the key matches a box title ---
+        if len(options) == 1 and list_key in self.box_map:
+            # Found a box. Treat its content as a list.
+            list_content = self.box_map[list_key]
+            if list_content:
+                # Split by newline and strip each line. Filter out empty lines.
+                lines = [line.strip() for line in list_content.split('\n') if line.strip()]
+                if lines:
+                    return lines # Return the content as a list
+
+        # --- Original Wildcard Logic ---
+        if len(options) == 1 and list_key in self.wildcards:
+            return self.wildcards[list_key]
+        
+        # --- Original Fallback ---
         return options
 
     def _expand_template_dimension(self, template_string):

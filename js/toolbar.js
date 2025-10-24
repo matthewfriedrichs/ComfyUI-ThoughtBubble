@@ -24,10 +24,11 @@ export class Toolbar {
         const { gridLabel, gridSelect } = this._createGridSizeSelector();
         const toggleGridButton = this._createToggleGridButton();
         const togglePeriodBreakButton = this._createTogglePeriodBreakButton();
+        const toggleMinimapButton = this._createToggleMinimapButton(); // <-- NEW
 
         const iteratorControl = this._createIteratorControl();
 
-        this.toolbarEl.append(this.saveButton, this.loadButton, fitViewButton, themeButton, togglePeriodBreakButton, gridLabel, gridSelect, toggleGridButton, iteratorControl);
+        this.toolbarEl.append(this.saveButton, this.loadButton, fitViewButton, themeButton, togglePeriodBreakButton, toggleMinimapButton, gridLabel, gridSelect, toggleGridButton, iteratorControl); // <-- NEW
     }
 
     handleTheme() {
@@ -106,6 +107,20 @@ export class Toolbar {
         return button;
     }
 
+    // --- NEW: Add toggle button for minimap ---
+    _createToggleMinimapButton() {
+        const button = this._createButton(
+            this.stateManager.state.showMinimap ? "Hide Map" : "Show Map",
+            () => {
+                this.stateManager.state.showMinimap = !this.stateManager.state.showMinimap;
+                button.textContent = this.stateManager.state.showMinimap ? "Hide Map" : "Show Map";
+                this.stateManager.save();
+                this.renderer.render(); // Trigger a re-render which will show/hide the map
+            }
+        );
+        return button;
+    }
+
     _setLoading(isLoading) {
         this._isLoading = isLoading;
         this.saveButton.disabled = isLoading;
@@ -138,6 +153,7 @@ export class Toolbar {
                     effectiveWidth = Math.max(box.width, 300);
                     effectiveHeight = Math.max(box.height, 200);
                     break;
+                case 'list': // <-- NEW
                 case 'text':
                 default:
                     effectiveWidth = Math.max(box.width, 200);

@@ -24,7 +24,8 @@ export class StateManager {
             pan: { x: 0, y: 0 }, zoom: 1.0, gridSize: 100, showGrid: true, savedView: null,
             iterator: 0,
             theme: {},
-            periodIsBreak: true, // <--- NEW: Enabled by default
+            periodIsBreak: true,
+            showMinimap: false, // <-- NEW: Add minimap state
         };
         try {
             const loadedState = JSON.parse(this.dataWidget.value);
