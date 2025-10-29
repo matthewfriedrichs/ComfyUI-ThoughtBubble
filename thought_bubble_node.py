@@ -66,7 +66,8 @@ class ThoughtBubbleNode:
                 if filename.endswith(".txt"):
                     name = os.path.splitext(filename)[0].lower()
                     with open(os.path.join(wildcards_dir, filename), 'r', encoding='utf-8') as f:
-                        self.WILDCARD_CACHE[name] = [line.strip() for line in f if line.strip()]
+                        # --- FIX: Removed 'if line.strip()' to allow empty lines ---
+                        self.WILDCARD_CACHE[name] = [line.strip() for line in f]
         except Exception as e:
             print(f"Thought Bubble Error loading wildcards: {e}")
 

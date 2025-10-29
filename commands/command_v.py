@@ -35,12 +35,16 @@ def _get_unified_content(parser, var_name):
 
 def _eval_get_expression(parser, content):
     """
-    Handles all 'get' logic: v(box1 +box2 -box3)
+    Handles all 'get' logic: v(box1 + box2 - box3)
     '+' or 'no prefix' adds content, respecting its original state.
     '-' TOGGLES content (positive -> negative, negative -> positive).
     """
-    # This regex finds a + or - (optional) followed by non-space characters
-    var_tokens = re.findall(r'([+-]?)(\S+)', content)
+    # --- UPDATED REGEX ---
+    # This regex now correctly handles spaces between operators and variable names.
+    # It finds an optional prefix ([+-]?), skips spaces (\s*), 
+    # and then finds a variable name ([^\s+-]\S*) which is defined
+    # as starting with a non-operator, non-space character.
+    var_tokens = re.findall(r'([+-]?)\s*([^\s+-]\S*)', content)
     
     final_parts = []
     
