@@ -1,19 +1,53 @@
 import random
-import re
 
 def _parse_weight(weight_str):
     """
-    Parses a weight string for random choice.
-    Supports floats (0.5) and integers (2).
+    Parses a weight string.
+    Converts '50' to 50, '1.2' to 1.2.
+    Returns a positive float or int.
     """
     try:
-        weight_str = weight_str.strip()
-        weight = float(weight_str)
-        if weight <= 0:
-            return 1.0 # Default to 1.0 if weight is zero or negative
-        return weight
+        weight_val = float(weight_str.strip())
+        if weight_val > 0:
+            return weight_val
     except ValueError:
-        return 1.0 # Default to 1.0 if not a valid number
+        pass
+    return 1.0 # Default weight if parsing fails or weight is <= 0
+
+def _get_weighted_options(parser, options_list):
+    """
+    Parses a list of option strings into a list of (text, weight) tuples.
+    Handles empty strings correctly.
+    """
+    weighted_list = []
+
+    for item in options_list:
+        text = item
+        weight = 1.0
+        
+        if ':' in item:
+            try:
+                parts = item.rsplit(':', 1)
+                maybe_weight = float(parts[1].strip())
+                if maybe_weight > 0:
+                    text = parts[0]
+                    weight = maybe_weight
+            except (ValueError, IndexError):
+                # Not a valid weight, treat the whole string as text
+                text = item
+                weight = 1.0
+        
+        # We must include empty strings.
+        # The w() command should strip, as "red:1" should result in "red"
+        #
+        # This is different from i() command, which should *preserve* whitespace.
+        # w( red | blue ) should be ["red", "blue"]
+        # i( red | blue ) should be [" red ", " blue "]
+        
+        text = text.strip() 
+        weighted_list.append((text, weight))
+    
+    return weighted_list
 
 def execute(parser, content, **kwargs):
     start_index = kwargs.get('start_index', 0)
@@ -25,43 +59,30 @@ def execute(parser, content, **kwargs):
         rng_instance.seed(parser.control_vars_by_id[linked_var_id])
         
     options = parser._get_list_from_content(content)
-    if not options: 
+    
+    if not options:
         return ""
 
-    choices = []
-    weights = []
-    has_weights = False
-
-    for item in options:
-        try:
-            # Try to split by the last colon
-            text, weight_str = item.rsplit(':', 1)
-            weight = _parse_weight(weight_str)
-            text = text.strip()
-            # Check if the weight is different from the default
-            if weight != 1.0:
-                has_weights = True
-        except ValueError:
-            # No colon or invalid weight, treat as default
-            text = item.strip()
-            weight = 1.0
-        
-        # --- FIX: We now correctly append all items, including empty strings ---
-        choices.append(text)
-        weights.append(weight)
+    weighted_options = _get_weighted_options(parser, options)
+    
+    choices = [text for text, weight in weighted_options]
+    weights = [weight for text, weight in weighted_options]
 
     if not choices:
         return ""
-        
-    # Use the appropriate random function
-    try:
-        if has_weights:
-            # Use weighted random choice
-            return rng_instance.choices(choices, weights=weights, k=1)[0].strip()
-        else:
-            # Use standard (uniform) random choice
-            return rng_instance.choice(choices).strip()
-    except IndexError:
-        # This can happen if choices is empty, though we check for it.
-        return ""
+
+    # Use the seeded RNG to make a weighted choice
+    selected_text = rng_instance.choices(choices, weights=weights, k=1)[0]
+    
+    # NEW: Recursive wildcard logic
+    # Check if the selected item is *itself* a wildcard file
+    if selected_text.lower() in parser.wildcards:
+        # If so, pick a random item from that file
+        recursive_options = parser.wildcards[selected_text.lower()]
+        if recursive_options:
+            # Note: This recursive step does not currently support weights
+            # from inside the file. It's a simple random choice.
+            return rng_instance.choice(recursive_options).strip()
+
+    return selected_text
 
