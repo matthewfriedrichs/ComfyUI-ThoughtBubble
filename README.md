@@ -162,8 +162,6 @@ Selects a line **sequentially** from a list, `ListBox`, or file. It uses the nod
     * **With ListBoxes:** `i( (my_colors_list) | (my_objects_list) )`
         * This is extremely powerful, iterating through every combination of your two lists.
 
-![Iteration Example](./assets/BasicSDXLIterationExample.png)
-
 ### **`-(...)` - Negative Prompt**
 Moves text from the positive prompt to the negative prompt.
 
