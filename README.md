@@ -1,147 +1,225 @@
-# **ThoughtBubble for ComfyUI**
+# **ThoughtBubble for ComfyUI 🧠**
 
-ThoughtBubble is a custom node for ComfyUI that provides an interactive canvas to build and manage your prompts in a more visual and organized way. Think of it as a whiteboard for your ideas, allowing you to link different concepts, create conditional logic, and dynamically generate prompts using a powerful set of commands.
+**ThoughtBubble** is a custom node for ComfyUI that gives you a dynamic, visual, and node-based "whiteboard" to build and manage your prompts.
 
-## **Features**
+Stop trying to manage complex prompts in a single tiny text box! ThoughtBubble lets you break your ideas into logical pieces on an infinite canvas. You can build prompts by combining text boxes, create powerful wildcards with smart `ListBoxes`, and even set up complex conditional logic and loops using a simple command system.
 
-* **Visual Prompting**: Ditch the single text box. Create, move, and resize "thought bubbles" on an infinite canvas.  
-* **Dynamic Commands**: Use a simple yet powerful command syntax to reference other boxes, create negative prompts, use wildcards, and even implement conditional logic.  
-* **Theming**: Customize the look and feel of the ThoughtBubble canvas to your liking. Save, load, and share your themes.  
-* **Custom Variables & Controls**: Create "Controls" boxes to define your own stateful variables. Set their behavior (increment, decrement, randomize, fixed value) and link them to commands for advanced sequential and conditional prompting.  
-* **Sequential Iteration**: Step through lists sequentially across multiple generations using the run counter or a variable from a control box.  
-* **LoRA and Text File Autocomplete**: The editor will automatically suggest LoRA names as you type lora(...) and text file names from your user folder when you type o(...).  
-* **Wildcard Support**: Integrates with a user/wildcards directory to pull random lines from your own text files.  
-* **Seedable Randomness**: The seed input on the node ensures that any random choices (from wildcards or random number generation) are repeatable.  
-* **Area Conditioning**: Create special "area" boxes to apply prompts to specific regions of your image, giving you fine-grained control over your composition.
-
----
-
-![Thought Bubble](./assets/thoughtbubblescreenshot.png)
+![Thought Bubble Screenshot](./assets/thoughtbubblescreenshot.png)
 ![Basic Example](./assets/BasicSDXLIterationExample.png)
 
 The above example image uses a 2D array to loop through 9 possible prompts. Conditional commands are use to parse the selected prompt from the text array to further control the output.
 
+
+## **Features**
+
+* **Visual Prompting:** Create, move, and resize "thought bubbles" on an infinite canvas. Pan, zoom, and organize your ideas visually.
+* **Dynamic Commands:** Use a simple command syntax (`v()`, `w()`, `i()`, etc.) to reference other boxes, run logic, and build your prompt.
+* **Powerful Box Types:**
+    * **Text Box:** Your standard workhorse for prompt fragments.
+    * **List Box:** A super-powered wildcard manager. Includes a toolbar to **Sort**, **Shuffle**, **Append Files**, and **Parse/Apply Weights** (`item:3`).
+    * **Controls Box:** Create custom variables (e.g., counters, random seeds) to control your `i()` and `w()` commands for advanced loops and animations.
+    * **Area Box:** Define regions for area conditioning (`a()`) with a visual canvas editor.
+* **Full Wildcard Integration:** Use `w(filename)` or `i(filename)` to pull from your `ComfyUI/user/wildcards` text files.
+* **ListBox as Wildcard:** Use a `ListBox` exactly like a text file! `w(my_list_box_title)` and `i(my_list_box_title)` work just as you'd expect.
+* **Theming:** Customize the look and feel of your canvas. Save, load, and share your themes.
+* **Autocomplete:** The editor automatically suggests `lora(...)`, `embed(...)`, and `o(...)` (text file) names as you type.
+
+---
+
 ## **Installation**
 
-1. Navigate to your ComfyUI/custom\_nodes/ directory.  
-2. Clone this repository: git clone https://github.com/matthewfriedrichs/ComfyUI-ThoughtBubble.git  
-3. Restart ComfyUI.
+1.  Navigate to your `ComfyUI/custom_nodes/` directory.
+2.  Clone this repository: `git clone https://github.com/matthewfriedrichs/ComfyUI-ThoughtBubble.git`
+3.  Restart ComfyUI.
 
-## **How to Use**
+---
 
-1. Add the **ThoughtBubble** node to your workflow (it can be found in the "Workflow Efficiency" category).  
-2. Note the **seed** and **iterator** widgets on the node. The main iterator is designed to change value on each run (e.g., increment), allowing you to use the i() command for sequential prompting.  
-3. The node provides a large canvas widget. You can:  
-   * **Create a box**: Left-click and drag on an empty area of the canvas, or double-click to open a creation menu.  
-   * **Move a box**: Click and drag the header of any box.  
-   * **Resize a box**: Click and drag the bottom-right corner of any box.  
-   * **Pan the canvas**: Middle-click (or scroll-wheel click) and drag.  
-   * **Zoom**: Use the scroll wheel.  
-4. By default, the content of the box titled "**output**" will be used to generate the final prompt. You can also maximize any other box to use its content as the source instead.  
-5. **Use the Controls Box for Advanced Logic**:  
-   * Create a "Controls" box from the creation menu (double-click on the canvas).  
-   * Click "+ Add Variable" to create a new variable. Give it a unique name, set its behavior (e.g., "Increment"), and provide a starting value.  
-   * In any text box, type i() or w(). A dropdown menu will appear, allowing you to link the command to one of your custom variables. The variable's behavior will now control the output of that command on each generation.
+## **How to Use (The Basics)**
 
-## **Commands (The Core Feature)**
+1.  Add the **ThoughtBubble** node to your workflow (found in the "Workflow Efficiency" category).
+2.  By default, the node will look for a box titled **`output`**. The content of this box is what will be sent as your final prompt.
+3.  You can also **Maximize** (the `🗖` button) any other box to use its content as the `output` instead.
 
-The power of ThoughtBubble comes from its command parser. You can type these commands into any text box to dynamically generate parts of your prompt.
+### Canvas Controls
 
-### **v(...) \- Variable/Box Operations**
+* **Create a Box:** Double-click on the canvas to open the creation menu.
+* **Create a Box (Quick):** Left-click and drag on an empty area to create a new box of the last selected type.
+* **Move a Box:** Click and drag a box's header.
+* **Resize a Box:** Click and drag the bottom-right corner of any box.
+* **Pan Canvas:** Middle-click (or scroll-wheel click) and drag.
+* **Zoom Canvas:** Use the scroll wheel.
+* **Edit Title:** Double-click a box's title to rename it.
 
-This is the most fundamental command. It can be used to define variables or reference boxes and variables.
+---
 
-* **Define a variable**: v(variable\_name|variable text)  
-* **Reference a box or variable**: v(name)  
-* **Combine boxes**: v(box1 \+ box2)
+## **The Box Types**
 
-### **o(...) \- Open Text File**
+### 1. Text Box (Default)
+This is your standard box. Use it to write parts of your prompt, define reusable styles, or as the main `output` box.
 
-Loads the content of an external text file from the user/textfiles directory. This is useful for reusing snippets of prompts. As you type, an autocomplete dropdown will show you the available .txt files.
+* **Example:** Create a box titled `style` and put `cinematic, 4k, hyperrealistic` inside it. In your `output` box, you can then write `a cat, v(style)`.
 
-* **Syntax**: o(filename\_without\_extension)
+### 2. List Box (Your Wildcard Manager)
+This is the most powerful box type. Use it to create and manage lists of items, which can then be used just like wildcard files. It has a dedicated toolbar:
 
-### **\-(text) \- Negative Prompt**
+* **Shuffle:** Randomly shuffles all lines in the list.
+* **Unique:** Removes all duplicate lines.
+* **Weights:** Opens a modal to manage item weights. It **parses** `item:weight` syntax (like `red:3`, `blue:1`) to populate the inputs. You can then apply your changes back as duplicates (`red, red, red, blue`) or as syntax (`red:3`, `blue:1`).
+* **Sort:** Opens a modal to sort the list alphabetically (A-Z or Z-A).
+* **Append:** Opens a file browser to merge another list from your `user/wildcards` or `user/textfiles` folders. You can choose to add it to the beginning or end, and to automatically deduplicate the merged list.
 
-This command moves text from the positive prompt to the negative prompt.
+### 3. Controls Box (Advanced Loops)
+This box doesn't hold text. Instead, it lets you create stateful **variables** that control your commands.
 
-* **Syntax**: \-(text to make negative)  
-* **Example**: beautiful painting \-(ugly, deformed)
+1.  Create a "Controls" box (e.g., title `my_controls`).
+2.  Click "+ Add Variable" and give it a name (e.g., `frame_counter`).
+3.  Set its **Behavior**:
+    * **Increment:** Adds 1 on every run.
+    * **Decrement:** Subtracts 1 on every run.
+    * **Randomize:** Generates a new large random number every run.
+    * **Fixed:** Stays at the value you set.
+4.  In any `i()` or `w()` command, you can link it to this variable. Just type `i(` or `w(` and a dropdown menu will appear, letting you select `my_controls / frame_counter`.
+5.  Now, that specific `i()` command will be controlled by your `frame_counter` variable instead of the main node's iterator, allowing for multiple, independent loops in a single prompt.
 
-### **w(wildcard) \- Wildcard (Random)**
+### 4. Area Box (Regional Prompting)
+This box is for **Area Conditioning**. It provides a visual canvas to define a region (X, Y, Width, Height, Strength) and a text area for the prompt you want to apply *only* to that region.
 
-Selects a **random** line from either an inline list or a file in your ComfyUI/user/wildcards folder. By default, this is controlled by the main seed widget on the node.
+* To use it, create an Area Box, give it a title (e.g., `face_area`), and define your region and prompt.
+* In your `output` box, use the `a()` command: `a beautiful woman a(face_area)`.
 
-* **Syntax (Inline List)**: w(option1 | option2 | option3)  
-* **Syntax (File)**: w(filename\_without\_extension)
+---
 
-**Linking Variables**: You can override the default random seed behavior by linking this command to a variable from a "Controls" box. Simply type w( and a dropdown will appear, listing all available variables. If you link a variable with "Randomize" behavior, a new random seed will be generated for this command on each run. You can also link variables with "Fixed", "Increment", or "Decrement" behavior to select items from the list by a specific index.
+## **Main Toolbar**
 
-### **i(wildcard) \- Iterator (Sequential)**
+At the top of the node is the main toolbar:
 
-Selects an item from a list **sequentially**. By default, it uses the node's main iterator widget, which increments on each run. It loops back to the start automatically. This is perfect for "prompt traveling" or creating animations.
+* **Save/Load:** Saves or loads text *from* the currently focused `TextBox` or `ListBox`.
+    * `ListBox` content saves to/loads from `user/wildcards`.
+    * `TextBox` content saves to/loads from `user/textfiles`.
+* **Fit View:** Zooms and pans the canvas to show all your boxes.
+* **Theme:** Opens the theme editor to customize all colors and fonts.
+* **Grid:** Changes the size of the background grid.
+* **Hide/Show Grid:** Toggles the grid visibility.
+* **Periods = BREAK:** Toggles whether periods (`.`) are automatically converted to ComfyUI's `BREAK` keyword.
+* **Hide/Show Map:** Toggles the mini-map in the bottom-right corner.
+* **Run: 0 / Reset:** Shows the current run number (iterator). "Reset" sets it back to 0.
 
-#### **1D Iteration (Simple Lists)**
+---
 
-* **Syntax (Inline List)**: i(option1 | option2 | option3)  
-* **Syntax (File)**: i(filename\_without\_extension)  
-* **Example**: With i(cat|dog|bird), the output will be "cat" on the first run, "dog" on the second, "bird" on the third, and then loop back to "cat".
+## **Core Commands (The Fun Part)**
 
-#### **N-Dimensional Iteration & Templating (Combinations)**
+Here are all the commands you can use inside any text or list box.
 
-You can define multiple dimensions of lists to generate every possible combination. Each dimension can be a **simple list** (a|b|c) or a **template string** that mixes text with sub-lists with (green|blue) fur.
+### **`v(...)` - Variables and Boxes**
+The most fundamental command. It gets content from other boxes or variables.
 
-* **Syntax**: i( (dim1\_a|dim1\_b) | a (red|blue) car | ...)  
-* **Example**: i( (a cat|a dog) | with (green|orange) fur )  
-* **How it works**: The parser expands the template with (green|orange) fur into a full list \['with green fur', 'with orange fur'\]. It then generates every combination:  
-  * **Iterator 0:** "a cat, with green fur"  
-  * **Iterator 1:** "a cat, with orange fur"  
-  * **Iterator 2:** "a dog, with green fur"  
-  * **Iterator 3:** "a dog, with orange fur"  
-  * **Iterator 4:** Loops back to the beginning.
+* **Get Box Content:** `v(box_title)`
+    * **Example:** `a beautiful v(subject)` will pull the text from the box named `subject`.
+* **Define a Variable:** `v(var_name|value)`
+    * **Example:** `v(my_color|red) a v(my_color) car` becomes `a red car`. The `v(my_color|red)` part becomes invisible.
+* **Combine Boxes:** `v(box1 + box2)`
+    * **Example:** `v(subject + style + location)`
+* **Subtract/Toggle Boxes:** `v(box1 - box2)`
+    * This "toggles" the content of `box2`. If `box2` contains positive prompts, they become negative. If it contains negative prompts (`-(ugly)`), they become positive (`ugly`).
+    * **Example:** `v(positive_prompt - negative_prompt)`
 
-**Linking Variables**: You can override the default iterator behavior by linking this command to a variable from a "Controls" box. Type i( and a dropdown will appear, listing all available variables. This allows you to have multiple, independent iterators in your prompt, each with its own state (e.g., one variable increments, another decrements, and a third stays fixed).
+### **`w(...)` - Wildcard (Random)**
+Selects a **random** line from an inline list, a `ListBox`, or a `user/wildcards` file.
 
-### **r(min|max) or r(max) \- Random Number**
+* **Inline List:** `w(red|green|blue)`
+    * Picks one: `red`, `green`, or `blue`.
+* **Weighted List:** `w(red:3|blue:1)`
+    * `red` is 3x as likely to be chosen as `blue`.
+* **ListBox / File:** `w(my_list_box)` or `w(my_wildcard_file)`
+    * Picks one random line from the `ListBox` or file.
+* **Mixed:** `w(my_list_box|a purple car|__other_wildcard__)`
+    * Picks randomly from all three options. If `my_list_box` is chosen, it *then* picks a random line from inside it.
 
-Generates a random integer or float within a specified range.
+### **`i(...)` - Iterator (Sequential)**
+Selects a line **sequentially** from a list, `ListBox`, or file. It uses the node's main "Run" counter or a linked **Controls Box** variable. It loops back to the start automatically.
 
-* **Syntax**: r(max) or r(min|max)  
-* **Example**: A stack of r(10) books
+* **Inline List:** `i(cat|dog|bird)`
+    * Run 0: `cat`
+    * Run 1: `dog`
+    * Run 2: `bird`
+    * Run 3: `cat`
+* **Weighted List (Holds):** `i(cat:2|dog:1)`
+    * Run 0: `cat`
+    * Run 1: `cat` (holds for 2 runs)
+    * Run 2: `dog`
+    * Run 3: `cat`
+* **ListBox / File:** `i(my_list_box)`
+    * Sequentially steps through every line in the `ListBox` or file.
+* **N-Dimensional (Combinations):**
+    * **Syntax:** `i( (list_a) | (list_b) )`
+    * **Example:** `i( (a|b) | (x|y) )`
+        * Run 0: `ax`
+        * Run 1: `ay`
+        * Run 2: `bx`
+        * Run 3: `by`
+    * **Advanced Example:** `a i( (red|green) | (car|truck) | in the (day|night) )`
+        * This will iterate through all 8 combinations (red car in the day, red car in the night, red truck in the day, ...).
+    * **With ListBoxes:** `i( (my_colors_list) | (my_objects_list) )`
+        * This is extremely powerful, iterating through every combination of your two lists.
 
-### **lora(name:model\_strength:clip\_strength) \- Apply LoRA**
+![Iteration Example](./assets/BasicSDXLIterationExample.png)
 
-Loads a LoRA with a specific strength. An autocomplete dropdown will appear as you type to help you find your LoRA files.
+### **`-(...)` - Negative Prompt**
+Moves text from the positive prompt to the negative prompt.
 
-* **Syntax**: lora(lora\_name:strength) or lora(lora\_name:model\_strength:clip\_strength)
+* **Example:** `a beautiful painting -(ugly, deformed, bad hands)`
+* **Final Positive:** `a beautiful painting`
+* **Final Negative:** `ugly, deformed, bad hands`
 
-### **a(box\_title) \- Area Conditioning**
+### **`lora(...)` - Load LoRA**
+Applies a LoRA. Autocomplete will help you find the name.
 
-Applies the prompt from a special "area" box to a specific region of the generated image.
+* **Syntax:** `lora(lora_name:model_strength)` or `lora(lora_name:model:clip)`
+* **Example:** `lora(my_style_lora:0.8)`
 
-* **Syntax**: a(title\_of\_area\_box)
+### **`embed(...)` - Load Embedding**
+Applies a Textual Inversion embedding. Autocomplete will help.
 
-### **?(keywords|text\_if\_true|text\_if\_false) \- Conditional**
+* **Syntax:** `embed(embedding_name)`
+* **Example:** `embed(my_embedding)`
 
-This command acts like a weighted "if" statement. It checks the text that comes *before* it in the prompt for a list of keywords. Each keyword can be assigned a weight, and the command sums the weights of all the keywords it finds. If the total weight is **1.0 or greater**, it will output the text\_if\_true. Otherwise, it will output the text\_if\_false.
+### **`o(...)` - Open Text File**
+Loads text from a file in `user/textfiles`. This is useful for long, static prompt snippets.
 
-* **Syntax**: ?(keyword1:weight, keyword2:weight | text if true | text if false)  
-  * Keywords without a specified weight default to a weight of 1.0.  
-  * Weights can be decimals (e.g., 0.5) or integer percentages (e.g., 50 for 0.5).  
-* **Example**: ?(pointy ears:0.5, whiskers:0.5 | It's probably a cat | Not a cat)  
-  * If both "pointy ears" and "whiskers" are found, the total weight is 0.5 \+ 0.5 \= 1.0, and the output is It's probably a cat.  
-  * If only "whiskers" is found, the total weight is 0.5, which is less than 1.0, so the output is Not a cat.
+* **Example:** `o(my_base_prompt)` will insert the full text from `my_base_prompt.txt`.
 
-### **??(keywords1:output1|keywords2:output2) \- Multi-Conditional**
+### **`a(...)` - Area Conditioning**
+Applies the prompt from an **Area Box** to your main prompt.
 
-A more advanced conditional that allows for multiple checks. It checks each weighted keyword group in order and outputs the text for the *first* group that has a total weight of 1.0 or more.
+* **Example:** `a detailed face a(face_area)`
+* *Note: This command only works if you have an `Area Box` with the title `face_area`.*
 
-* **Syntax**: ??(key1:w1,key2:w2:output\_if\_true | key3:w3:another\_output | ...)
+### **`r(...)` - Random Number**
+Generates a random number.
 
-### **Advanced Commands**
+* **Syntax:** `r(max)` or `r(min|max)` or `r(min|max|decimals)`
+* **Example 1 (Int):** `a stack of r(3|10) books` -> `a stack of 7 books`
+* **Example 2 (Float):** `(a cat:r(0.8|1.2|1))` -> `(a cat:1.1)`
 
-* **h(text) \- Hidden Text**: The text inside h() is processed for commands but is hidden from the final output.  
-* **c(text) \- Clean Text**: Sanitizes, tokenizes, and cleans a messy text string according to specific rules, including removing redundant parentheses and handling special characters.  
-* **f(...) \- Force Resolution**: This command is used for complex replacements with fuzzy matching and conditions.  
-  * **Syntax**: f((find\_word:threshold) & (condition\_word) | replacement\_text)  
-  * **Example**: f((cat:80) & (animal) | dog) would replace "cat" with "dog" only if the word "animal" is also present in the prompt and the similarity is at least 80%.
+### **`?(...)` - If Statement**
+A simple "if" statement. It checks the prompt *before* it for keywords. If the keywords are found, it outputs the "true" text, otherwise the "false" text.
+
+* **Syntax:** `?(keyword:weight|text_if_true|text_if_false)`
+* *Note: The "true" text is only output if the sum of weights of found keywords is >= 1.0. A keyword with no weight defaults to 1.0.*
+* **Example:** `a photo of a cat. ?(cat|very cute|not a cat)`
+    * **Output:** `a photo of a cat. very cute`
+* **Weighted Example:** `a man with a hat ?(man:0.5, hat:0.5|wearing a hat|not wearing a hat)`
+    * **Output:** `a man with a hat wearing a hat` (because 0.5 + 0.5 = 1.0)
+
+### **`??(...)` - Multi-If Statement**
+A "switch" or "if/else if/else" statement. It checks for multiple conditions in order and outputs the text for the *first* one that is true.
+
+* **Syntax:** `??(cond_1:text_1|cond_2:text_2|default_text)`
+* **Example:** `a red car ??(red:is red|blue:is blue|is some other color)`
+    * **Output:** `a red car is red`
+
+### **`h(...)` - Hidden Text**
+Hides text from the final prompt. This is useful for leaving comments or running `v()` set commands.
+
+* **Example:** `a red car h(this is a test) h(v(my_var|blue))`
+* **Output:** `a red car` (but `my_var` is now set to `blue`).
