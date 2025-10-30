@@ -86,6 +86,7 @@ export class BoxHandler {
                 let minWidth = 150, minHeight = 80;
                 switch(box.type) {
                     case 'area': minWidth = 500; minHeight = 500; break;
+                    case 'list': minWidth = 300; minHeight = 200; break;
                     case 'controls': minWidth = 300; minHeight = 200; break;
                     case 'text': default: minWidth = 200; minHeight = 100; break;
                 }

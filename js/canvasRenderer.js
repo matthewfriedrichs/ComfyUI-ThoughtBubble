@@ -3,13 +3,15 @@
 import { boxTypeRegistry, TOOLBAR_HEIGHT } from "./utils.js";
 
 export class CanvasRenderer {
-    constructor(canvasEl, worldEl, gridEl, contextMenu, stateManager, minimapEl) { // <-- NEW
+    constructor(canvasEl, worldEl, gridEl, contextMenu, stateManager, minimapEl) {
         this.canvasEl = canvasEl;
         this.worldEl = worldEl;
         this.gridEl = gridEl;
         this.contextMenu = contextMenu;
         this.stateManager = stateManager;
-        this.lastActiveTextarea = null;
+
+        // --- FIX: Rename property to match what toolbar.js expects ---
+        this.lastActiveBoxInfo = null;
 
         // --- NEW: Minimap setup ---
         this.minimapEl = minimapEl;
@@ -110,11 +112,14 @@ export class CanvasRenderer {
                 boxData: box,
                 fullState: this.stateManager.state,
                 requestSave: () => this.stateManager.save(),
-                setLastActiveTextarea: (textarea) => { this.lastActiveTextarea = textarea; },
+
+                // --- FIX: This callback now correctly sets the object ---
+                setLastActiveTextarea: (textarea) => {
+                    this.lastActiveBoxInfo = { box: box, textarea: textarea };
+                },
                 canvasEl: this.canvasEl
             });
 
-            // --- FIX: Store a reference to the class instance on the box data ---
             // This is crucial for the update logic to find the live instance of the box.
             box.instance = boxInstance;
 

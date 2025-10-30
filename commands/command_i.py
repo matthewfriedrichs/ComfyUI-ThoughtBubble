@@ -16,23 +16,32 @@ def _parse_weight(weight_str):
         pass
     return 1 # Default weight is 1 step
 
+# --- MODIFIED: This function now checks for box_map ---
 def _get_list_from_content(parser, content_str):
     """
-    Takes a raw content string (e.g., "a|b|c") and returns
-    a list of strings, respecting | as a delimiter.
-    Handles wildcard file lookup.
+    Takes a raw content string (e.g., "a|b|c", "wildcard_file", or "box_title") 
+    and returns a list of strings.
+    Handles wildcard file lookup AND box content lookup.
     """
     options = parser._split_toplevel_options(content_str)
     
-    # Check for single-item wildcard file
+    # Check for single-item wildcard file or box name
     if len(options) == 1:
-        wildcard_name = options[0].strip().lower()
-        if wildcard_name in parser.wildcards:
-            return parser.wildcards[wildcard_name]
-    
-    # Not a wildcard file, or it's an inline list.
+        item_name = options[0].strip().lower()
+        
+        # Priority 1: Check wildcard files
+        if item_name in parser.wildcards:
+            return parser.wildcards[item_name]
+            
+        # Priority 2: Check box map
+        if item_name in parser.box_map:
+            # For i(), we do not strip or filter empty lines, just split
+            return parser.box_map[item_name].split('\n')
+
+    # Not a single wildcard/box, or it's an inline list (e.g., "a|b|c").
     # We must re-split the original string to correctly handle `a|b` vs `a`
     return parser._split_toplevel_options(content_str, delimiter='|')
+# --- END MODIFICATION ---
 
 def _i_expand_template(parser, template_string):
     """
@@ -48,7 +57,7 @@ def _i_expand_template(parser, template_string):
     
     # If no parentheses, it's not a template, just a list of items.
     if not match:
-        # This is the fix: treat the whole string as a list of options
+        # This will now correctly expand "colors" or "a|b"
         return _get_list_from_content(parser, template_string)
 
     # Found parentheses, proceed with N-D template expansion
@@ -73,6 +82,7 @@ def _i_expand_template(parser, template_string):
         
         # Get the content inside the parens and expand it
         sub_content = template_string[paren_start + 1:paren_end]
+        # This call will now correctly expand "colors", "a|b|c", etc.
         sub_lists.append(_get_list_from_content(parser, sub_content))
         parts.append(None) # Placeholder for an expanded item
         
@@ -205,21 +215,30 @@ def execute(parser, content, **kwargs):
         selected_text = "".join(reversed(selected_texts))
         
     else:
-        # 1-DIMENSIONAL LOGIC (e.g., "a|b|c" or "(a|b) c")
+        # 1-DIMENSIONAL LOGIC (e.g., "a|b|c" or "(a|b) c" or "colors")
         weighted_list = _get_weighted_list(parser, raw_content)
         if not weighted_list:
             return ""
         selected_text = _get_item_at_index(weighted_list, current_iterator)
 
-    # NEW: Recursive wildcard logic (SEQUENTIAL)
-    # Check if the selected item is *itself* a wildcard file
+    # --- Recursive wildcard/box logic (SEQUENTIAL) ---
     selected_text_lower = selected_text.strip().lower()
+
+    # Check if the selected item is *itself* a wildcard file
     if selected_text_lower in parser.wildcards:
         # If so, pick a *sequential* item from that file
         recursive_options = parser.wildcards[selected_text_lower]
         if recursive_options:
             # Use the iterator to pick, and do not strip whitespace
             return recursive_options[int(current_iterator) % len(recursive_options)]
+            
+    # Check if the selected item is a box title
+    elif selected_text_lower in parser.box_map:
+        # If so, get content from the box, treat it as a list, and pick a sequential item
+        box_content = parser.box_map[selected_text_lower]
+        # For i(), we do not strip or filter empty lines, just split
+        recursive_options = box_content.split('\n')
+        if recursive_options:
+            return recursive_options[int(current_iterator) % len(recursive_options)]
 
     return selected_text
-

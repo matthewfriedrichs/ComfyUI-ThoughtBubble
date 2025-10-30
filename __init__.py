@@ -8,6 +8,8 @@ import json
 # --- Helper Functions for File Operations ---
 textfiles_directory = os.path.join(os.path.dirname(folder_paths.get_input_directory()), 'user', 'textfiles')
 themes_directory = os.path.join(os.path.dirname(folder_paths.get_input_directory()), 'user', 'thoughtbubble_themes')
+# --- NEW: Define wildcards directory ---
+wildcards_directory = os.path.join(os.path.dirname(folder_paths.get_input_directory()), 'user', 'wildcards')
 # --- NEW: Define the internal themes directory ---
 internal_themes_directory = os.path.join(os.path.dirname(__file__), 'themes') 
 
@@ -15,9 +17,11 @@ MAX_FILE_SIZE_MB = 5
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 def ensure_user_directories():
-    """Ensures the user directories for textfiles and themes exist."""
+    """Ensures the user directories for textfiles, themes, and wildcards exist."""
     os.makedirs(textfiles_directory, exist_ok=True)
     os.makedirs(themes_directory, exist_ok=True)
+    # --- NEW: Ensure wildcards directory exists ---
+    os.makedirs(wildcards_directory, exist_ok=True)
 
 def is_path_safe(base_dir, filepath):
     """Checks if the resolved file path is securely within the base directory."""
@@ -95,6 +99,62 @@ async def load_text_file(request):
 
     if not os.path.exists(filepath): return web.json_response({"error": "File not found"}, status=404)
     if not is_path_safe(textfiles_directory, filepath): return web.json_response({"error": "Access to the requested file path is forbidden."}, status=403)
+
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return web.json_response({"content": content})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+# --- NEW: Wildcard File Endpoints ---
+@server.PromptServer.instance.routes.get("/thoughtbubble/wildcards")
+async def get_wildcard_files(request):
+    ensure_user_directories()
+    files = [f for f in os.listdir(wildcards_directory) if f.endswith('.txt')]
+    return web.json_response(files)
+
+@server.PromptServer.instance.routes.post("/thoughtbubble/save_wildcard")
+async def save_wildcard_file(request):
+    ensure_user_directories()
+    try:
+        data = await request.json()
+        filename = data.get('filename')
+        content = data.get('content')
+
+        if not filename or not isinstance(filename, str):
+            return web.json_response({"error": "Filename is required and must be a string."}, status=400)
+        
+        if len(content.encode('utf-8')) > MAX_FILE_SIZE_BYTES:
+            return web.json_response({"error": f"Content exceeds the maximum file size of {MAX_FILE_SIZE_MB}MB."}, status=400)
+
+        secure_filename = os.path.basename(filename)
+        if not secure_filename or not secure_filename.endswith('.txt'):
+            return web.json_response({"error": "Invalid filename. It must not be empty and must end with .txt"}, status=400)
+
+        filepath = os.path.join(wildcards_directory, secure_filename)
+        if not is_path_safe(wildcards_directory, filepath):
+            return web.json_response({"error": "Invalid file path detected."}, status=403)
+
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return web.json_response({"success": True, "message": f"Saved to {secure_filename}"})
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON in request body."}, status=400)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+@server.PromptServer.instance.routes.get("/thoughtbubble/load_wildcard")
+async def load_wildcard_file(request):
+    ensure_user_directories()
+    filename = request.query.get('filename')
+    if not filename: return web.json_response({"error": "Filename is required"}, status=400)
+
+    secure_filename = os.path.basename(filename)
+    filepath = os.path.join(wildcards_directory, secure_filename)
+
+    if not os.path.exists(filepath): return web.json_response({"error": "File not found"}, status=404)
+    if not is_path_safe(wildcards_directory, filepath): return web.json_response({"error": "Access to the requested file path is forbidden."}, status=403)
 
     try:
         with open(filepath, 'r', encoding='utf-8') as f:

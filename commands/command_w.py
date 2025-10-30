@@ -74,15 +74,24 @@ def execute(parser, content, **kwargs):
     # Use the seeded RNG to make a weighted choice
     selected_text = rng_instance.choices(choices, weights=weights, k=1)[0]
     
-    # NEW: Recursive wildcard logic
+    # --- MODIFIED: Recursive wildcard/box logic ---
+    selected_text_lower = selected_text.lower()
+    
     # Check if the selected item is *itself* a wildcard file
-    if selected_text.lower() in parser.wildcards:
+    if selected_text_lower in parser.wildcards:
         # If so, pick a random item from that file
-        recursive_options = parser.wildcards[selected_text.lower()]
+        recursive_options = parser.wildcards[selected_text_lower]
         if recursive_options:
             # Note: This recursive step does not currently support weights
             # from inside the file. It's a simple random choice.
             return rng_instance.choice(recursive_options).strip()
+            
+    # --- NEW: Check if the selected item is a box title ---
+    elif selected_text_lower in parser.box_map:
+        # If so, get content from the box, treat it as a list, and pick a random item
+        box_content = parser.box_map[selected_text_lower]
+        recursive_options = [line.strip() for line in box_content.split('\n') if line.strip()]
+        if recursive_options:
+            return rng_instance.choice(recursive_options)
 
     return selected_text
-

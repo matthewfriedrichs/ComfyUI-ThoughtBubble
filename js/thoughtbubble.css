@@ -176,7 +176,7 @@
 }
 
 .thought-bubble-box.list-box:not(.minimized) {
-    min-width: 200px;
+    min-width: 300px;
     min-height: 100px;
 }
 
@@ -526,4 +526,161 @@
     /* Initially hidden */
     pointer-events: none;
     /* Non-interactive */
+}
+
+/* --- NEW: List Box Styles --- */
+.thought-bubble-box-content.list-box {
+    display: flex;
+    flex-direction: column;
+    /* Remove padding so toolbar is flush */
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+}
+
+.list-box-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    padding: 4px;
+    /* Use header bg for the toolbar */
+    background-color: var(--tb-header-bg-color);
+    border-bottom: 1px solid var(--tb-box-border-color);
+}
+
+.list-box-toolbar button {
+    background: var(--tb-button-bg-color);
+    color: var(--tb-button-text-color);
+    border: 1px solid var(--tb-box-border-color);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.list-box-toolbar button:hover {
+    filter: brightness(1.2);
+}
+
+/* Make the listbox textarea fill remaining space */
+.list-box-toolbar+textarea {
+    flex-grow: 1;
+    /* These properties are inherited, but good to be explicit */
+    width: 100%;
+    height: auto;
+    border: none;
+    resize: none;
+}
+
+/* --- NEW: Weight Editor Modal Styles --- */
+.thought-bubble-weight-editor-body {
+    max-height: 400px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 10px;
+    /* for scrollbar */
+    color: #ccc;
+    /* Use a default color just in case */
+    color: var(--tb-text-color, #ccc);
+}
+
+.weight-editor-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.weight-editor-row label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 14px;
+}
+
+.weight-editor-input {
+    width: 70px;
+    padding: 4px 8px;
+    background-color: #282828;
+    /* Use a default color just in case */
+    background-color: var(--tb-textarea-bg-color, #282828);
+    color: #ccc;
+    /* Use a default color just in case */
+    color: var(--tb-text-color, #ccc);
+    border: 1px solid #555;
+    /* Use a default color just in case */
+    border: 1px solid var(--tb-box-border-color, #555);
+    border-radius: 4px;
+    text-align: right;
+}
+
+/* --- MODIFIED: Append Modal Options --- */
+.append-modal-options {
+    display: flex;
+    flex-flow: row wrap;
+    /* Allows groups to wrap if needed, but prefer a row */
+    justify-content: space-between;
+    /* Spreads the two groups out */
+    align-items: center;
+    gap: 10px 20px;
+    /* Vertical and horizontal gap */
+    padding: 0 12px 10px;
+    /* Match file list padding */
+    border-bottom: 1px solid #444;
+}
+
+.append-option-group {
+    display: flex;
+    align-items: center;
+    /* This is key to aligning text and inputs */
+    gap: 5px;
+    /* Space between elements in a group */
+    flex-basis: auto;
+    /* Let each group take its own space */
+    flex-shrink: 0;
+}
+
+.append-option-group label {
+    color: var(--tb-text-color, #ccc);
+    cursor: pointer;
+    margin-right: 10px;
+    /* Add space *after* a label, before the next input */
+}
+
+.append-option-group span {
+    color: var(--tb-text-color, #ccc);
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+.append-option-group input[type="radio"],
+.append-option-group input[type="checkbox"] {
+    cursor: pointer;
+    margin: 0;
+}
+
+
+/* --- NEW: Sort Modal Styles --- */
+.thought-bubble-sort-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.thought-bubble-sort-modal-body button {
+    /* Use the main button styles from the node toolbar */
+    padding: 8px 12px;
+    background-color: var(--tb-button-bg-color);
+    color: var(--tb-button-text-color);
+    border: 1px solid var(--tb-box-border-color);
+    border-radius: 4px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.thought-bubble-sort-modal-body button:hover {
+    filter: brightness(1.2);
 }
