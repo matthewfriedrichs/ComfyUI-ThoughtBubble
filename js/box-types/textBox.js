@@ -1,7 +1,9 @@
-// js/box-types/textBox.js
+// filename: matthewfriedrichs/comfyui-thoughtbubble/ComfyUI-ThoughtBubble-20e653b2daf632dadb0bcffb4406cb4f0b5f56a7/js/box-types/textBox.js
 
 import { BaseBox } from "./baseBox.js";
 import { app } from "../../../../scripts/app.js";
+
+// --- CACHE HELPERS ---
 
 let LORA_LIST_CACHE = null;
 async function getLoraList() {
@@ -11,10 +13,7 @@ async function getLoraList() {
         const data = await response.json();
         LORA_LIST_CACHE = data;
         return LORA_LIST_CACHE.map(name => name.replace(/\.[^/.]+$/, ""));
-    } catch (error) {
-        console.error("Failed to fetch LoRA list:", error);
-        return [];
-    }
+    } catch (error) { return []; }
 }
 
 let TEXTFILE_LIST_CACHE = null;
@@ -25,27 +24,21 @@ async function getTextFileList() {
         const data = await response.json();
         TEXTFILE_LIST_CACHE = data;
         return TEXTFILE_LIST_CACHE.map(name => name.replace(/\.txt$/, ""));
-    } catch (error) {
-        console.error("Failed to fetch text file list:", error);
-        return [];
-    }
+    } catch (error) { return []; }
 }
 
-// --- NEW: Add embedding list fetching and caching ---
 let EMBEDDING_LIST_CACHE = null;
 async function getEmbeddingList() {
     if (EMBEDDING_LIST_CACHE) return EMBEDDING_LIST_CACHE;
     try {
-        const response = await fetch("/embeddings"); // Assumes an endpoint like /loras
+        const response = await fetch("/embeddings");
         const data = await response.json();
         EMBEDDING_LIST_CACHE = data;
         return EMBEDDING_LIST_CACHE.map(name => name.replace(/\.[^/.]+$/, ""));
-    } catch (error) {
-        console.error("Failed to fetch embedding list:", error);
-        return [];
-    }
+    } catch (error) { return []; }
 }
 
+// --- MAIN CLASS ---
 
 export class TextBox extends BaseBox {
     constructor(options) {
@@ -53,35 +46,210 @@ export class TextBox extends BaseBox {
         this.setLastActiveTextarea = options.setLastActiveTextarea;
         this.canvasEl = options.canvasEl;
         this.activeDropdown = null;
-        this.lastEvent = null; // Store the last mouse/key event
+        this.lastEvent = null;
+
+        this.activeHighlightEls = new Map();
     }
 
     render(contentEl) {
         contentEl.className = "thought-bubble-box-content";
+        contentEl.style.position = "relative";
+
         const textarea = document.createElement("textarea");
         textarea.value = this.boxData.content;
         this.textarea = textarea;
 
+        this.highlightContainer = document.createElement("div");
+        this.highlightContainer.style.cssText = "position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden;";
+        contentEl.appendChild(this.highlightContainer);
+
         const eventHandler = (e) => {
             this.lastEvent = e;
             this.handleContextualAutocomplete();
+            this.updateVisuals();
         };
 
         textarea.addEventListener('focus', (e) => {
             if (this.setLastActiveTextarea) this.setLastActiveTextarea(textarea);
-            eventHandler(e);
+            // Re-run visuals on focus to clear any "Pending Open" errors
+            this.updateVisuals();
         });
+
         textarea.addEventListener('input', (e) => {
             this.boxData.content = textarea.value;
             this.requestSave();
             eventHandler(e);
         });
+
         textarea.addEventListener('click', eventHandler);
         textarea.addEventListener('keyup', eventHandler);
-        textarea.addEventListener('blur', () => this.closeAutocomplete());
+
+        textarea.addEventListener('blur', () => {
+            this.closeAutocomplete();
+            // Re-run visuals on blur to catch "Pending Open" errors
+            this.updateVisuals();
+        });
+
+        textarea.addEventListener('scroll', () => {
+            this.updateVisuals();
+        });
 
         contentEl.appendChild(textarea);
     }
+
+    // --- VISUAL PARENTHESIS MATCHING ---
+
+    updateVisuals() {
+        const text = this.textarea.value;
+        const cursorIndex = this.textarea.selectionStart;
+        const isFocused = (document.activeElement === this.textarea);
+
+        // 1. Analyze structure (Separating Open/Close errors)
+        const analysis = this.analyzeParentheses(text);
+
+        // 2. Determine Error State (Blinking Background)
+        const hasClosingErrors = analysis.unmatchedCloses.size > 0;
+        const hasOpeningErrors = analysis.unmatchedOpens.size > 0;
+
+        // SMART LOGIC: 
+        // - Always blink for extra closing ')' (Immediate syntax error)
+        // - Only blink for extra opening '(' if we have lost focus (User finished typing)
+        const shouldBlink = hasClosingErrors || (hasOpeningErrors && !isFocused);
+
+        if (shouldBlink) {
+            this.textarea.classList.add('thought-bubble-input-error');
+        } else {
+            this.textarea.classList.remove('thought-bubble-input-error');
+        }
+
+        // 3. Identify Highlights
+        const desiredHighlights = new Map();
+
+        // A. Unmatched Closes: ALWAYS Red Overlay
+        analysis.unmatchedCloses.forEach(index => {
+            desiredHighlights.set(index, { type: 'error', level: 0 });
+        });
+
+        // B. Unmatched Opens: Red Overlay ONLY if not focused
+        if (!isFocused) {
+            analysis.unmatchedOpens.forEach(index => {
+                desiredHighlights.set(index, { type: 'error', level: 0 });
+            });
+        }
+
+        // C. Matches: Rainbow Colors
+        for (const pair of analysis.pairs) {
+            if (cursorIndex >= pair.open && cursorIndex <= pair.close + 1) {
+                desiredHighlights.set(pair.open, { type: 'match', level: pair.depth });
+                desiredHighlights.set(pair.close, { type: 'match', level: pair.depth });
+            }
+        }
+
+        // 4. Render
+        this.renderHighlights(desiredHighlights, text);
+    }
+
+    analyzeParentheses(text) {
+        const stack = [];
+        const pairs = [];
+        const unmatchedCloses = new Set();
+
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            if (char === '(') {
+                stack.push({ index: i, depth: stack.length });
+            } else if (char === ')') {
+                if (stack.length > 0) {
+                    const open = stack.pop();
+                    pairs.push({ open: open.index, close: i, depth: open.depth });
+                } else {
+                    unmatchedCloses.add(i); // Immediate Error: unmatched closing
+                }
+            }
+        }
+
+        // Remaining items in stack are unmatched opens
+        const unmatchedOpens = new Set();
+        while (stack.length > 0) {
+            unmatchedOpens.add(stack.pop().index);
+        }
+
+        return { pairs, unmatchedCloses, unmatchedOpens };
+    }
+
+    renderHighlights(desiredHighlights, text) {
+        // 1. CLEANUP OLD
+        for (const [index, el] of this.activeHighlightEls) {
+            if (!desiredHighlights.has(index)) {
+                const currentChar = text[index];
+                if (currentChar !== el.textContent) {
+                    el.remove();
+                    this.activeHighlightEls.delete(index);
+                } else {
+                    el.classList.add('tb-paren-fading-out');
+                    el.classList.remove('tb-paren-active');
+                    this.activeHighlightEls.delete(index);
+                    setTimeout(() => { if (el.parentElement) el.remove(); }, 500);
+                }
+            }
+        }
+
+        const computed = window.getComputedStyle(this.textarea);
+        const fontSettings = {
+            fontFamily: computed.fontFamily,
+            fontSize: computed.fontSize,
+            lineHeight: computed.lineHeight,
+            letterSpacing: computed.letterSpacing
+        };
+
+        // 2. CREATE / UPDATE
+        for (const [index, data] of desiredHighlights) {
+            let el = this.activeHighlightEls.get(index);
+
+            if (el) {
+                const currentIsError = el.classList.contains('tb-paren-error');
+                const newIsError = data.type === 'error';
+                if (currentIsError !== newIsError) { el.remove(); el = null; }
+            }
+
+            if (!el) {
+                el = document.createElement('div');
+                this.highlightContainer.appendChild(el);
+                this.activeHighlightEls.set(index, el);
+
+                el.className = 'thought-bubble-paren-match';
+                el.style.fontFamily = fontSettings.fontFamily;
+                el.style.fontSize = fontSettings.fontSize;
+                el.style.lineHeight = fontSettings.lineHeight;
+                el.style.letterSpacing = fontSettings.letterSpacing;
+                el.textContent = text[index];
+
+                const coords = getCaretCoordinates(this.textarea, index);
+                el.style.left = `${coords.left - this.textarea.scrollLeft}px`;
+                el.style.top = `${coords.top - this.textarea.scrollTop}px`;
+
+            } else {
+                const coords = getCaretCoordinates(this.textarea, index);
+                el.style.left = `${coords.left - this.textarea.scrollLeft}px`;
+                el.style.top = `${coords.top - this.textarea.scrollTop}px`;
+                if (el.textContent !== text[index]) el.textContent = text[index];
+            }
+
+            el.classList.remove('tb-paren-level-0', 'tb-paren-level-1', 'tb-paren-level-2', 'tb-paren-level-3', 'tb-paren-error');
+
+            if (data.type === 'error') {
+                el.classList.add('tb-paren-error');
+            } else {
+                const safeDepth = data.level % 4;
+                el.classList.add(`tb-paren-level-${safeDepth}`);
+            }
+
+            el.classList.remove('tb-paren-fading-out');
+            el.classList.add('tb-paren-active');
+        }
+    }
+
+    // --- AUTOCOMPLETE LOGIC ---
 
     handleContextualAutocomplete() {
         const text = this.textarea.value;
@@ -89,24 +257,44 @@ export class TextBox extends BaseBox {
         const textBeforeCursor = text.slice(0, cursorPos);
 
         const loraMatch = textBeforeCursor.match(/\blora\(([^)]*)$/i);
-        const embedMatch = textBeforeCursor.match(/\bembed\(([^)]*)$/i); // <-- NEW
+        const embedMatch = textBeforeCursor.match(/\bembed\(([^)]*)$/i);
         const commandMatch = textBeforeCursor.match(/\b([iw])\(([^)]*)$/i);
         const openMatch = textBeforeCursor.match(/\bo\(([^)]*)$/i);
+        const genericCmdMatch = textBeforeCursor.match(/\b(eq|if|neg|area|h)\($/i);
 
         this.closeAutocomplete();
 
-        if (loraMatch) {
-            this.handleLoraAutocomplete(loraMatch);
-        } else if (embedMatch) { // <-- NEW
-            this.handleEmbeddingAutocomplete(embedMatch);
-        } else if (commandMatch) {
-            this.showVariableDropdown(commandMatch);
-        } else if (openMatch) {
-            this.handleTextFileAutocomplete(openMatch);
-        }
+        if (loraMatch) this.handleLoraAutocomplete(loraMatch);
+        else if (embedMatch) this.handleEmbeddingAutocomplete(embedMatch);
+        else if (commandMatch) this.showVariableDropdown(commandMatch);
+        else if (openMatch) this.handleTextFileAutocomplete(openMatch);
+        else if (genericCmdMatch) this.showCommandHelp(genericCmdMatch);
     }
 
-    // --- NEW: Autocomplete handler for embeddings ---
+    showCommandHelp(match) {
+        const cmd = match[1].toLowerCase();
+        const templates = {
+            'eq': 'eq(val_a|val_b|true_text|false_text)',
+            'if': 'if(condition|true_text|false_text)',
+            'neg': 'neg(text_to_exclude)',
+            'area': 'area(1024x1024)',
+            'h': 'h(hidden_text)'
+        };
+
+        if (!templates[cmd]) return;
+
+        const dropdown = this.createDropdownMenu();
+        this.activeDropdown = dropdown;
+
+        const header = this.createDropdownHeader(`Syntax Helper`);
+        dropdown.appendChild(header);
+
+        const item = this.createDropdownItem(`Insert: ${templates[cmd]}`, () => {
+            this.insertAutocompleteText(templates[cmd], match.index);
+        });
+        dropdown.appendChild(item);
+    }
+
     async handleEmbeddingAutocomplete(match) {
         const prefix = match[1];
         this.closeAutocomplete();
@@ -128,7 +316,6 @@ export class TextBox extends BaseBox {
             dropdown.appendChild(item);
         });
     }
-
 
     async handleTextFileAutocomplete(match) {
         const prefix = match[1];
@@ -152,7 +339,6 @@ export class TextBox extends BaseBox {
         });
     }
 
-
     showVariableDropdown(commandMatch) {
         const variablesByBoxId = new Map();
 
@@ -171,9 +357,6 @@ export class TextBox extends BaseBox {
             }
         });
 
-        const allVariables = [];
-        variablesByBoxId.forEach(group => allVariables.push(...group.variables));
-
         const dropdown = this.createDropdownMenu();
         this.activeDropdown = dropdown;
 
@@ -183,19 +366,20 @@ export class TextBox extends BaseBox {
         const defaultText = commandType === 'i' ? 'Toolbar Run' : 'Node Seed';
         let currentLinkText = `Default (${defaultText})`;
 
+        const allVariables = [];
+        variablesByBoxId.forEach(group => allVariables.push(...group.variables));
+
         if (currentLinkId) {
             const linkedVar = allVariables.find(v => v.id === currentLinkId);
-            if(linkedVar) {
-                currentLinkText = `${linkedVar.boxTitle} / ${linkedVar.name}`;
-            }
+            if (linkedVar) currentLinkText = `${linkedVar.boxTitle} / ${linkedVar.name}`;
         }
 
         const header = this.createDropdownHeader(`✓ ${currentLinkText}`);
         dropdown.appendChild(header);
 
         const defaultOption = this.createDropdownItem(`Default (${defaultText})`, () => {
-             this.linkCommandToVariable(commandMatch, null);
-             this.closeAutocomplete();
+            this.linkCommandToVariable(commandMatch, null);
+            this.closeAutocomplete();
         });
         dropdown.appendChild(defaultOption);
 
@@ -220,18 +404,10 @@ export class TextBox extends BaseBox {
     }
 
     linkCommandToVariable(commandMatch, variableId) {
-        if (!this.boxData.commandLinks) {
-            this.boxData.commandLinks = {};
-        }
-
+        if (!this.boxData.commandLinks) this.boxData.commandLinks = {};
         const commandId = commandMatch.index;
-
-        if (variableId) {
-            this.boxData.commandLinks[commandId] = variableId;
-        } else {
-            delete this.boxData.commandLinks[commandId];
-        }
-
+        if (variableId) this.boxData.commandLinks[commandId] = variableId;
+        else delete this.boxData.commandLinks[commandId];
         this.requestSave();
     }
 
@@ -245,10 +421,8 @@ export class TextBox extends BaseBox {
 
         const dropdown = this.createDropdownMenu();
         this.activeDropdown = dropdown;
-        
-        const currentCommandText = this.textarea.value.slice(match.index, this.textarea.selectionStart);
-        const selectedLoraName = loraPrefix || 'Select a LoRA...';
 
+        const selectedLoraName = loraPrefix || 'Select a LoRA...';
         const header = this.createDropdownHeader(`✓ ${selectedLoraName}`);
         dropdown.appendChild(header);
 
@@ -258,27 +432,24 @@ export class TextBox extends BaseBox {
                 const commandStart = match.index;
                 let commandEnd = fullText.indexOf(')', commandStart);
                 if (commandEnd === -1) commandEnd = fullText.length; else commandEnd += 1;
-
-                const currentFullCommand = fullText.substring(commandStart, commandEnd);
-                const strengthMatch = currentFullCommand.match(/:[\d.]+\)?$/);
-                const strength = strengthMatch ? strengthMatch[0].replace(')', '') : ":1.0";
-                
-                this.insertAutocompleteText(`lora(${loraName}${strength})`, match.index, true);
+                this.insertAutocompleteText(`lora(${loraName}:1.0)`, match.index, true);
             });
             dropdown.appendChild(item);
         });
     }
 
-    // --- NEW: Helper functions for dropdowns ---
+    // --- DROPDOWN HELPERS ---
+
     createDropdownMenu() {
         const dropdown = document.createElement('div');
         dropdown.className = 'lora-autocomplete-dropdown';
         document.body.appendChild(dropdown);
 
+        const caretCoords = getCaretCoordinates(this.textarea, this.textarea.selectionEnd);
         const rect = this.textarea.getBoundingClientRect();
-        const canvasRect = this.canvasEl.getBoundingClientRect();
-        const xPos = Math.max(rect.left, canvasRect.left);
-        let yPos = (this.lastEvent && typeof this.lastEvent.clientY === 'number') ? this.lastEvent.clientY + 20 : Math.min(rect.bottom, canvasRect.bottom) - 50;
+
+        const xPos = rect.left + caretCoords.left - this.textarea.scrollLeft;
+        const yPos = rect.top + caretCoords.top + 20 - this.textarea.scrollTop;
 
         dropdown.style.left = `${xPos}px`;
         dropdown.style.top = `${yPos}px`;
@@ -320,15 +491,13 @@ export class TextBox extends BaseBox {
         this.requestSave();
 
         let newCursorPos = (textBefore + newCommand).length - 1;
-        if(isLora) {
-             newCursorPos = (textBefore + newCommand.split(':')[0]).length;
+        if (isLora) {
+            newCursorPos = (textBefore + newCommand.split(':')[0]).length;
         }
-
 
         this.textarea.focus();
         this.textarea.setSelectionRange(newCursorPos, newCursorPos);
     }
-
 
     closeAutocomplete() {
         if (this.activeDropdown) {
@@ -346,4 +515,54 @@ export class TextBox extends BaseBox {
             x, y, width, height,
         };
     }
+}
+
+// --- UTILITY: Get Caret Coordinates ---
+function getCaretCoordinates(element, position) {
+    const div = document.createElement('div');
+    document.body.appendChild(div);
+
+    const style = div.style;
+    const computed = window.getComputedStyle(element);
+
+    style.whiteSpace = 'pre-wrap';
+    style.wordWrap = 'break-word';
+    style.position = 'absolute';
+    style.visibility = 'hidden';
+
+    // Copy font/layout properties exactly
+    const properties = [
+        'direction', 'boxSizing', 'width', 'height', 'overflowX', 'overflowY',
+        'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+        'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+        'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch', 'fontSize',
+        'fontSizeAdjust', 'lineHeight', 'fontFamily', 'textAlign', 'textTransform',
+        'textIndent', 'textDecoration', 'letterSpacing', 'wordSpacing'
+    ];
+
+    properties.forEach(prop => {
+        style[prop] = computed[prop];
+    });
+
+    if (element.nodeName === 'INPUT') {
+        style.overflowX = 'auto';
+        style.whiteSpace = 'nowrap';
+    } else {
+        style.overflowY = 'auto';
+    }
+
+    div.textContent = element.value.substring(0, position);
+
+    const span = document.createElement('span');
+    span.textContent = element.value.substring(position) || '.';
+    div.appendChild(span);
+
+    const coords = {
+        top: span.offsetTop + parseInt(computed['borderTopWidth']),
+        left: span.offsetLeft + parseInt(computed['borderLeftWidth']),
+        height: parseInt(computed['lineHeight'])
+    };
+
+    document.body.removeChild(div);
+    return coords;
 }

@@ -1,244 +1,186 @@
-import re
+# filename: thoughtbubble/commands/command_i.py
+
 import itertools
+from .utils import parse_weighted_option, fetch_list_source
 
-# --- HELPER FUNCTIONS ---
 
-def _parse_weight(weight_str):
-    """
-    Parses a weight string into an integer step count.
-    'item:3' means wait 3 steps. 'item' means 1 step.
-    """
-    try:
-        weight_val = float(weight_str.strip())
-        if weight_val >= 1:
-            return int(weight_val)
-    except (ValueError, TypeError):
-        pass
-    return 1 # Default weight is 1 step
-
-# --- MODIFIED: This function now checks for box_map ---
-def _get_list_from_content(parser, content_str):
-    """
-    Takes a raw content string (e.g., "a|b|c", "wildcard_file", or "box_title") 
-    and returns a list of strings.
-    Handles wildcard file lookup AND box content lookup.
-    """
-    options = parser._split_toplevel_options(content_str)
-    
-    # Check for single-item wildcard file or box name
-    if len(options) == 1:
-        item_name = options[0].strip().lower()
-        
-        # Priority 1: Check wildcard files
-        if item_name in parser.wildcards:
-            return parser.wildcards[item_name]
-            
-        # Priority 2: Check box map
-        if item_name in parser.box_map:
-            # For i(), we do not strip or filter empty lines, just split
-            return parser.box_map[item_name].split('\n')
-
-    # Not a single wildcard/box, or it's an inline list (e.g., "a|b|c").
-    # We must re-split the original string to correctly handle `a|b` vs `a`
-    return parser._split_toplevel_options(content_str, delimiter='|')
-# --- END MODIFICATION ---
-
-def _i_expand_template(parser, template_string):
-    """
-    Expands a template string like "(a|b) c" into ["ac", "bc"].
-    Also handles single items like "a" -> ["a"].
-    """
-    parts, sub_lists, cursor = [], [], 0
-    
-    # Find all top-level parenthesized groups
-    paren_regex = re.compile(r'\(')
-    
-    match = paren_regex.search(template_string, cursor)
-    
-    # If no parentheses, it's not a template, just a list of items.
-    if not match:
-        # This will now correctly expand "colors" or "a|b"
-        return _get_list_from_content(parser, template_string)
-
-    # Found parentheses, proceed with N-D template expansion
-    while cursor < len(template_string):
-        match = paren_regex.search(template_string, cursor)
-        
-        if not match:
-            # Add the trailing part of the string
-            parts.append(template_string[cursor:])
-            break
-
-        paren_start = match.start()
-        paren_end = parser._find_matching_paren(template_string, paren_start)
-
-        if paren_end == -1:
-            # Malformed, add the rest of the string
-            parts.append(template_string[cursor:])
-            break
-            
-        # Add the text before the parenthesis
-        parts.append(template_string[cursor:paren_start])
-        
-        # Get the content inside the parens and expand it
-        sub_content = template_string[paren_start + 1:paren_end]
-        # This call will now correctly expand "colors", "a|b|c", etc.
-        sub_lists.append(_get_list_from_content(parser, sub_content))
-        parts.append(None) # Placeholder for an expanded item
-        
-        cursor = paren_end + 1
-    
-    if not sub_lists:
-        return [template_string]
-
-    # Generate all combinations
-    final_list = []
-    for combo in itertools.product(*sub_lists):
-        result_parts = []
-        combo_iter = iter(combo)
-        for part in parts:
-            if part is None:
-                result_parts.append(next(combo_iter, ''))
-            else:
-                result_parts.append(part)
-        # We must NOT filter(None) here, as empty strings are valid
-        final_list.append("".join(result_parts))
-        
-    return final_list
-
-def _get_weighted_list(parser, raw_dimension_str):
-    """
-    Takes a raw dimension string, expands it if it's a template,
-    and returns a list of (text, weight) tuples.
-    """
-    expanded_options = _i_expand_template(parser, raw_dimension_str)
-    
-    weighted_list = []
-    for item in expanded_options:
-        text = item
-        weight = 1
-        
-        if ':' in item:
-            try:
-                parts = item.rsplit(':', 1)
-                # Try to parse the part after the colon as a weight
-                parsed_weight = _parse_weight(parts[1])
-                if parsed_weight > 1 or (parsed_weight == 1 and parts[1].strip() == '1'):
-                    # It's a valid weight
-                    text = parts[0]
-                    weight = parsed_weight
-            except (ValueError, IndexError):
-                # Not a valid weight, treat the whole string as text
-                pass
-        
-        # Unlike w(), i() MUST preserve whitespace. Do not strip().
-        weighted_list.append((text, weight))
-    
-    return weighted_list
-
-def _get_item_at_index(weighted_list, index):
-    """
-    Given a weighted list [('a', 2), ('b', 1)] and an index,
-    finds the correct item.
-    Index 0 -> 'a', Index 1 -> 'a', Index 2 -> 'b'
-    """
-    if not weighted_list:
-        return ""
-        
-    total_weight = sum(w for t, w in weighted_list)
-    if total_weight == 0:
-        return ""
-        
-    # Modulo the index by the total weight to loop
-    target_index = int(index) % total_weight
-    
-    current_index = 0
-    for text, weight in weighted_list:
-        if current_index <= target_index < current_index + weight:
-            return text
-        current_index += weight
-        
-    # Fallback (shouldn't be reached, but good for safety)
-    return weighted_list[0][0]
-
-# --- MAIN EXECUTE FUNCTION ---
-
-def execute(parser, content, **kwargs):
-    start_index = kwargs.get('start_index', 0)
-    linked_var_id = parser.command_links.get(str(start_index))
-    current_iterator = parser.control_vars_by_id.get(linked_var_id, parser.iterator)
-    
-    raw_content = content.strip()
-    
-    # --- NEW is_nd LOGIC ---
-    # An N-D list MUST have parentheses AND a top-level pipe.
-    # 1. i(a|b)           -> has_paren=F, has_toplevel_pipe=T => is_nd=F (1D)
-    # 2. i((a|b) c)      -> has_paren=T, has_toplevel_pipe=F => is_nd=F (1D Template)
-    # 3. i((a|b)|c)      -> has_paren=T, has_toplevel_pipe=T => is_nd=T (N-D)
-    
-    has_paren = '(' in raw_content or ')' in raw_content
-    
+def _split_by_pipe(text):
+    options = []
     balance = 0
-    has_toplevel_pipe = False
-    for char in raw_content:
-        if char == '(': balance += 1
-        elif char == ')': balance -= 1
-        elif char == '|' and balance == 0:
-            has_toplevel_pipe = True
-            break
-    
-    is_nd = has_paren and has_toplevel_pipe
-    # --- END NEW is_nd LOGIC ---
-    
-    if is_nd:
-        # N-DIMENSIONAL LOGIC
-        dim_strings = parser._split_toplevel_options(raw_content, delimiter='|')
-        dimensions = [_get_weighted_list(parser, d) for d in dim_strings]
-        
-        if not all(dimensions):
-            return "" # One of the dimensions was empty
+    current_buffer = []
+    i = 0
+    while i < len(text):
+        char = text[i]
+        if char == "\\" and i + 1 < len(text):
+            current_buffer.append(char)
+            current_buffer.append(text[i + 1])
+            i += 2
+            continue
+        if char == "(":
+            balance += 1
+        elif char == ")":
+            balance -= 1
 
-        selected_texts = []
-        odometer_val = int(current_iterator)
+        if char == "|" and balance == 0:
+            options.append("".join(current_buffer))
+            current_buffer = []
+        else:
+            current_buffer.append(char)
+        i += 1
+    options.append("".join(current_buffer))
+    return options
+
+
+def _expand_options(text):
+    if not text:
+        return [""]
+    segments = []
+    current_buffer = []
+    i = 0
+    balance = 0
+
+    while i < len(text):
+        char = text[i]
+        if char == "\\" and i + 1 < len(text):
+            current_buffer.append(char)
+            current_buffer.append(text[i + 1])
+            i += 2
+            continue
+        if char == "(":
+            if balance == 0:
+                if current_buffer:
+                    segments.append(["".join(current_buffer)])
+                    current_buffer = []
+            else:
+                current_buffer.append(char)
+            balance += 1
+        elif char == ")":
+            balance -= 1
+            if balance == 0:
+                group_content = "".join(current_buffer)
+                current_buffer = []
+                options = _split_by_pipe(group_content)
+                expanded_options = []
+                for opt in options:
+                    expanded_options.extend(_expand_options(opt))
+                segments.append(expanded_options)
+            else:
+                current_buffer.append(char)
+        else:
+            current_buffer.append(char)
+        i += 1
+    if current_buffer:
+        segments.append(["".join(current_buffer)])
+
+    results = []
+    for combo in itertools.product(*segments):
+        results.append("".join(combo))
+    return results
+
+
+def execute(parser, args, **kwargs):
+    if not args:
+        return ""
+    context = kwargs.get("context", "")
+
+    # 1. Execute all args
+    resolved_args = []
+    for arg in args:
+        content = arg.execute(parser, context=context)
+        resolved_args.append(content)
+
+    # 2. Determine Mode
+    is_dimensional_mode = False
+    if len(resolved_args) > 1:
+        all_wrapped = True
+        for ra in resolved_args:
+            stripped = ra.strip()
+            if not (stripped.startswith("(") and stripped.endswith(")")):
+                all_wrapped = False
+                break
+        if all_wrapped:
+            is_dimensional_mode = True
+
+    # 3. Process Arguments
+    dimensions = []
+    for content in resolved_args:
+        expanded_list = _expand_options(content)
+        dim_options = []
+
+        for opt in expanded_list:
+            text_part, weight_float = parse_weighted_option(opt)
+            weight = int(weight_float)  # Iterator needs int count
+
+            clean_opt = text_part.strip()
+
+            # Helper to preserve whitespace surrounding the key
+            prefix = ""
+            suffix = ""
+            if clean_opt and clean_opt in text_part:
+                idx = text_part.find(clean_opt)
+                prefix = text_part[:idx]
+                suffix = text_part[idx + len(clean_opt) :]
+
+            items_to_add = []
+
+            # Unified Source Check (Wildcards, Boxes, Vars)
+            source_lines = fetch_list_source(parser, clean_opt)
+
+            if source_lines is not None:
+                # Process lines for weights too
+                for line in source_lines:
+                    l_text, l_w = parse_weighted_option(line)
+                    l_count = int(l_w)
+                    if l_count > 0:
+                        items_to_add.extend(
+                            [f"{prefix}{l_text.strip()}{suffix}"] * l_count
+                        )
+            else:
+                # Literal Text
+                items_to_add = [text_part]
+
+            # Apply the outer weight (repetition)
+            if weight > 0 and items_to_add:
+                dim_options.extend(items_to_add * weight)
+
+        dimensions.append(dim_options)
+
+    if not is_dimensional_mode:
+        # MODE: OPTIONS (OR)
+        all_options = []
+        for dim in dimensions:
+            all_options.extend(dim)
+        if not all_options:
+            return ""
+        return all_options[parser.iterator % len(all_options)]
+
+    else:
+        # MODE: DIMENSIONS (AND)
+        total_permutations = 1
+        for dim in dimensions:
+            if not dim:
+                continue
+            total_permutations *= len(dim)
+
+        if total_permutations == 0:
+            return ""
+
+        current_step = parser.iterator % total_permutations
+        indices = []
+        divisor = 1
 
         for dim in reversed(dimensions):
-            total_weight = sum(w for t, w in dim)
-            if total_weight == 0:
-                selected_texts.append("")
+            count = len(dim)
+            if count == 0:
+                indices.insert(0, 0)
                 continue
-                
-            current_index = odometer_val % total_weight
-            odometer_val //= total_weight
-            
-            selected_texts.append(_get_item_at_index(dim, current_index))
-            
-        selected_text = "".join(reversed(selected_texts))
-        
-    else:
-        # 1-DIMENSIONAL LOGIC (e.g., "a|b|c" or "(a|b) c" or "colors")
-        weighted_list = _get_weighted_list(parser, raw_content)
-        if not weighted_list:
-            return ""
-        selected_text = _get_item_at_index(weighted_list, current_iterator)
+            idx = (current_step // divisor) % count
+            indices.insert(0, idx)
+            divisor *= count
 
-    # --- Recursive wildcard/box logic (SEQUENTIAL) ---
-    selected_text_lower = selected_text.strip().lower()
+        results = []
+        for dim, idx in zip(dimensions, indices):
+            if dim:
+                results.append(dim[idx])
 
-    # Check if the selected item is *itself* a wildcard file
-    if selected_text_lower in parser.wildcards:
-        # If so, pick a *sequential* item from that file
-        recursive_options = parser.wildcards[selected_text_lower]
-        if recursive_options:
-            # Use the iterator to pick, and do not strip whitespace
-            return recursive_options[int(current_iterator) % len(recursive_options)]
-            
-    # Check if the selected item is a box title
-    elif selected_text_lower in parser.box_map:
-        # If so, get content from the box, treat it as a list, and pick a sequential item
-        box_content = parser.box_map[selected_text_lower]
-        # For i(), we do not strip or filter empty lines, just split
-        recursive_options = box_content.split('\n')
-        if recursive_options:
-            return recursive_options[int(current_iterator) % len(recursive_options)]
-
-    return selected_text
+        return "".join(results)

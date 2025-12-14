@@ -1,8 +1,8 @@
-def execute(parser, content, **kwargs):
-    """
-    Wraps the content in special markers. The content remains visible to
-    other commands during parsing, but the markers and content are stripped
-    out at the very end by the main parser's finalization step.
-    """
-    # Add spaces to ensure the tag doesn't merge with adjacent words.
+# filename: thoughtbubble/commands/command_h.py
+
+def execute(parser, args, **kwargs):
+    if not args: return ""
+    context = kwargs.get('context', '')
+    
+    content = "".join([arg.execute(parser, context=context) for arg in args])
     return f" ###HIDDEN_START###{content}###HIDDEN_END### "

@@ -5,6 +5,7 @@
 
 from . import command_area
 from . import command_embed
+from . import command_eq
 from . import command_h
 from . import command_i
 from . import command_if
@@ -15,3 +16,4 @@ from . import command_o
 from . import command_r
 from . import command_v
 from . import command_w
+from . import command_t

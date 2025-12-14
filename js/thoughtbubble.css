@@ -684,3 +684,122 @@
 .thought-bubble-sort-modal-body button:hover {
     filter: brightness(1.2);
 }
+
+.thought-bubble-paren-match {
+    position: absolute;
+    background-color: rgba(0, 255, 0, 0.4);
+    /* Green highlight */
+    border: 1px solid rgba(0, 255, 0, 0.8);
+    border-radius: 3px;
+    pointer-events: none;
+    /* Let clicks pass through */
+    z-index: 100;
+    /* Animate it fading out after 1 second */
+    animation: fadeOut 0.5s ease-out 1s forwards;
+}
+
+/* The error flash when you type a stray ')' */
+@keyframes flashError {
+    0% {
+        background-color: rgba(255, 0, 0, 0.3);
+    }
+
+    100% {
+        background-color: var(--tb-box-bg);
+    }
+}
+
+.thought-bubble-flash-error {
+    animation: flashError 0.3s ease-out;
+}
+
+@keyframes fadeOut {
+    to {
+        opacity: 0;
+    }
+}
+
+/* --- PARENTHESIS MATCHING --- */
+
+.thought-bubble-paren-match {
+    position: absolute;
+    pointer-events: none;
+    z-index: 100;
+
+    /* CLEAN STYLE: No borders, no shadows, just text */
+    background-color: transparent;
+    border: none;
+    outline: none;
+    font-weight: 900;
+    /* Extra bold to cover underlying text */
+    margin: 0;
+    padding: 0;
+
+    /* Disable old animations */
+    animation: none !important;
+
+    /* Fade transitions */
+    transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    opacity: 1;
+}
+
+/* --- RAINBOW TEXT COLORS (Flat Colors, No Glow) --- */
+
+/* Level 0: Green */
+.tb-paren-level-0 {
+    color: #50fa7b;
+}
+
+/* Level 1: Cyan */
+.tb-paren-level-1 {
+    color: #8be9fd;
+}
+
+/* Level 2: Pink */
+.tb-paren-level-2 {
+    color: #ff79c6;
+}
+
+/* Level 3: Purple */
+.tb-paren-level-3 {
+    color: #bd93f9;
+}
+
+/* Error: Red Text for the character itself */
+.tb-paren-error {
+    color: #ff5555;
+    transform: scale(1.2);
+}
+
+/* --- TEXT BOX ERROR STATE (The Blinking Background) --- */
+
+@keyframes errorPulse {
+    0% {
+        background-color: var(--tb-box-bg);
+    }
+
+    50% {
+        background-color: rgba(255, 85, 85, 0.25);
+    }
+
+    /* Red tint */
+    100% {
+        background-color: var(--tb-box-bg);
+    }
+}
+
+.thought-bubble-input-error {
+    animation: errorPulse 1s infinite;
+}
+
+/* --- ANIMATION STATES --- */
+
+.tb-paren-active {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.tb-paren-fading-out {
+    opacity: 0;
+    transform: scale(1.0);
+}

@@ -14,7 +14,7 @@ class ThoughtBubbleNode:
     WILDCARD_CACHE = {}
     LORA_CACHE = {} 
     TEXTFILE_DIRECTORY = None 
-    TEXTFILE_CACHE = {} # <-- NEW: Add a cache for text files
+    TEXTFILE_CACHE = {} 
 
     def __init__(self):
         # Instance-level cache for models and conditioning
@@ -29,8 +29,8 @@ class ThoughtBubbleNode:
         self.last_negative_prompt = None
         self.last_clip_id = None
         
-        # --- NEW: Caching for area conditioning ---
         self.last_area_config = None
+        self.last_timed_config = None 
 
     @classmethod
     def INPUT_TYPES(s):
@@ -66,7 +66,6 @@ class ThoughtBubbleNode:
                 if filename.endswith(".txt"):
                     name = os.path.splitext(filename)[0].lower()
                     with open(os.path.join(wildcards_dir, filename), 'r', encoding='utf-8') as f:
-                        # --- FIX: Removed 'if line.strip()' to allow empty lines ---
                         self.WILDCARD_CACHE[name] = [line.strip() for line in f]
         except Exception as e:
             print(f"Thought Bubble Error loading wildcards: {e}")
@@ -91,7 +90,7 @@ class ThoughtBubbleNode:
         try:
             data = json.loads(canvas_data)
             iterator = data.get("iterator", 0)
-            period_is_break = data.get("periodIsBreak", True) # <--- NEW: Get state
+            period_is_break = data.get("periodIsBreak", True) 
             boxes = data.get("boxes", [])
             output_box_content, maximized_box = None, None
             
@@ -126,7 +125,7 @@ class ThoughtBubbleNode:
                     box_map, self.WILDCARD_CACHE, self.TEXTFILE_DIRECTORY, rng, iterator, 
                     all_control_vars_by_id, all_control_vars_by_name, command_links,
                     self.TEXTFILE_CACHE,
-                    period_is_break=period_is_break # <--- NEW: Pass state
+                    period_is_break=period_is_break
                 )
                 positive_prompt, negative_prompt = parser.parse(raw_prompt_source)
                 
@@ -162,11 +161,19 @@ class ThoughtBubbleNode:
                                 ))
                     current_area_config = tuple(config_list)
 
+                current_timed_config = None
+                if hasattr(parser, 'scheduled_prompts') and parser.scheduled_prompts:
+                    current_timed_config = tuple(
+                        (d['prompt'], d['start_at'], d['end_at']) 
+                        for d in sorted(parser.scheduled_prompts, key=lambda x: x['start_at'])
+                    )
+
                 if (self.cached_positive_cond is not None and
                     self.last_clip_id == id(clip_out) and
                     self.last_positive_prompt == positive_prompt and
                     self.last_negative_prompt == negative_prompt and
-                    self.last_area_config == current_area_config):
+                    self.last_area_config == current_area_config and
+                    self.last_timed_config == current_timed_config):
                     
                     positive_conditioning = self.cached_positive_cond
                     negative_conditioning = self.cached_negative_cond
@@ -189,12 +196,27 @@ class ThoughtBubbleNode:
                             cond_dict['mask'], cond_dict['mask_strength'] = mask, strength
                             positive_conditioning.append([cond_tensor, cond_dict])
 
+                    if current_timed_config:
+                        for timed_config in current_timed_config:
+                            (timed_prompt, start_at, end_at) = timed_config
+                            
+                            timed_cond_data = self.text_to_conditioning(clip_out, timed_prompt)
+                            if not timed_cond_data: continue
+                            
+                            cond_tensor, cond_dict = timed_cond_data[0][0], timed_cond_data[0][1].copy()
+                            
+                            cond_dict['start_at'] = float(start_at)
+                            cond_dict['end_at'] = float(end_at)
+                            
+                            positive_conditioning.append([cond_tensor, cond_dict])
+
                     self.cached_positive_cond = positive_conditioning
                     self.cached_negative_cond = negative_conditioning
                     self.last_positive_prompt = positive_prompt
                     self.last_negative_prompt = negative_prompt
                     self.last_clip_id = id(clip_out)
                     self.last_area_config = current_area_config
+                    self.last_timed_config = current_timed_config
 
         except json.JSONDecodeError:
             print(f"Thought Bubble Error: Could not decode JSON data from canvas.")
@@ -203,11 +225,48 @@ class ThoughtBubbleNode:
         
         return (model_out, clip_out, positive_conditioning, negative_conditioning, positive_prompt, negative_prompt)
 
+    # --- THIS IS THE MODIFIED FUNCTION ---
     def text_to_conditioning(self, clip, text):
-        if not text: return []
-        tokens = clip.tokenize(text)
-        cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True)
-        return [[cond.clone(), {"pooled_output": pooled.clone()}]]
+        if not text: 
+            return []
+
+        # Check if this is an SDXL-style combined CLIP object
+        if hasattr(clip, "clip_l") and hasattr(clip, "clip_g"):
+            # --- SDXL (Dual CLIP) Path ---
+            
+            # Tokenize with L
+            tokens_l = clip.clip_l.tokenize(text)
+            # Tokenize with G
+            tokens_g = clip.clip_g.tokenize(text)
+
+            # Pad tokens to be the same length
+            # (This is standard practice for SDXL encoding)
+            max_len = max(len(tokens_l["l"]), len(tokens_g["g"]))
+            
+            if len(tokens_l["l"]) < max_len:
+                tokens_l["l"] = tokens_l["l"] + [tokens_l["l"][-1]] * (max_len - len(tokens_l["l"]))
+            
+            if len(tokens_g["g"]) < max_len:
+                tokens_g["g"] = tokens_g["g"] + [tokens_g["g"][-1]] * (max_len - len(tokens_g["g"]))
+
+            # Encode with L
+            cond_l, _ = clip.clip_l.encode_from_tokens(tokens_l, return_pooled=False)
+            
+            # Encode with G
+            cond_g, pooled_g = clip.clip_g.encode_from_tokens(tokens_g, return_pooled=True)
+
+            # Concatenate the L and G conditions
+            cond = torch.cat((cond_l, cond_g), dim=-1)
+            
+            # Return in the format ComfyUI expects
+            return [[cond.clone(), {"pooled_output": pooled_g.clone()}]]
+
+        else:
+            # --- Standard SD 1.5 (Single CLIP) Path ---
+            tokens = clip.tokenize(text)
+            cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True)
+            return [[cond.clone(), {"pooled_output": pooled.clone()}]]
+    # --- END OF MODIFIED FUNCTION ---
 
     def apply_loras(self, model, clip, loras_to_load):
         model_out, clip_out = model.clone(), clip.clone()
@@ -225,6 +284,8 @@ class ThoughtBubbleNode:
                         lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
                         self.LORA_CACHE[lora_path] = lora
 
+                    # This function is smart and will correctly patch
+                    # SD 1.5 CLIPs and SDXL (L+G) CLIPs.
                     model_out, clip_out = comfy.sd.load_lora_for_models(
                         model_out, clip_out, lora, model_strength, clip_strength)
                         
