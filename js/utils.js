@@ -1,7 +1,7 @@
 // js/utils.js
 
 export const TITLE_HEIGHT = 26;
-export const TOOLBAR_HEIGHT = 30;
+export const TOOLBAR_HEIGHT = 60;
 
 export const boxTypeRegistry = new Map();
 

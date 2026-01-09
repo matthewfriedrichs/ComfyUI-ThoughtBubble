@@ -1,189 +1,242 @@
-import { ThoughtBubbleModal } from "./utils.js";
 import { DEFAULT_THEME } from "./themeManager.js";
 
 export class ThemeEditor {
     constructor(stateManager, themeManager) {
         this.stateManager = stateManager;
         this.themeManager = themeManager;
-        this.modal = new ThoughtBubbleModal();
+        this.panel = null;
     }
 
     show() {
+        // --- FIX: Singleton Check ---
+        const existing = document.querySelector('.thought-bubble-floating-panel');
+        if (existing) {
+            // Panel exists: Re-center it and return
+            const winW = window.innerWidth;
+            const winH = window.innerHeight;
+            const panelW = existing.offsetWidth;
+            const panelH = existing.offsetHeight;
+            existing.style.left = `${(winW - panelW) / 2}px`;
+            existing.style.top = `${(winH - panelH) / 2}px`;
+            return;
+        }
+        // ----------------------------
+
+        this.panel = document.createElement('div');
+        this.panel.className = 'thought-bubble-floating-panel';
+
+        const header = document.createElement('div');
+        header.className = 'floating-panel-header';
+        header.innerHTML = '<span>Theme Editor</span>';
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'panel-close-btn';
+        closeBtn.innerHTML = '×';
+        closeBtn.onclick = () => this.close();
+        header.appendChild(closeBtn);
+
         const body = this.createEditorBody();
-        const footerButtons = this.createFooterButtons();
-        this.modal.show("Theme Editor", body, footerButtons);
+        const footer = this.createFooterButtons();
+
+        this.panel.append(header, body, footer);
+        document.body.appendChild(this.panel);
+
+        const winW = window.innerWidth;
+        const winH = window.innerHeight;
+        // Force a layout calc so offsetWidth is correct
+        const panelW = this.panel.offsetWidth || 320;
+        const panelH = this.panel.offsetHeight || 400;
+
+        this.panel.style.left = `${(winW - panelW) / 2}px`;
+        this.panel.style.top = `${(winH - panelH) / 2}px`;
+
+        this.makeDraggable(this.panel, header);
+    }
+
+    close() {
+        if (this.panel) {
+            this.panel.remove();
+            this.panel = null;
+        }
+        const existing = document.querySelector('.thought-bubble-floating-panel');
+        if (existing) existing.remove();
+    }
+
+    makeDraggable(element, handle) {
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        handle.onmousedown = (e) => {
+            e.preventDefault();
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            document.onmouseup = () => {
+                document.onmouseup = null;
+                document.onmousemove = null;
+            };
+            document.onmousemove = (e) => {
+                e.preventDefault();
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                element.style.top = (element.offsetTop - pos2) + "px";
+                element.style.left = (element.offsetLeft - pos1) + "px";
+            };
+        };
     }
 
     createEditorBody() {
         const container = document.createElement('div');
-        container.className = 'thought-bubble-theme-editor';
+        container.className = 'floating-panel-body';
 
         const currentTheme = this.stateManager.state.theme || {};
 
         for (const key in DEFAULT_THEME) {
             const row = document.createElement('div');
-            row.className = 'theme-editor-row';
+            const isColor = key.toLowerCase().includes('color');
+            row.className = `theme-editor-row ${isColor ? 'is-color-row' : 'is-text-row'}`;
 
             const label = document.createElement('label');
-            label.textContent = key.replace('--tb-', '').replace(/-/g, ' ');
+            label.className = 'theme-editor-label';
+            label.textContent = key.replace('--tb-', '').replace(/-/g, ' ').toUpperCase();
 
-            const isColor = key.toLowerCase().includes('color');
             const input = document.createElement('input');
             input.type = isColor ? 'color' : 'text';
             input.value = currentTheme[key] || DEFAULT_THEME[key];
+            input.className = isColor ? 'theme-editor-input-color' : 'theme-editor-input-text';
 
-            const textInput = isColor ? document.createElement('input') : null;
             if (isColor) {
-                textInput.type = 'text';
-                textInput.value = input.value;
-                input.addEventListener('input', () => textInput.value = input.value);
-                textInput.addEventListener('change', () => input.value = textInput.value);
+                const hexInput = document.createElement('input');
+                hexInput.type = 'text';
+                hexInput.className = 'theme-editor-input-hex';
+                hexInput.value = input.value;
+                input.addEventListener('input', () => {
+                    hexInput.value = input.value;
+                    liveUpdate(input.value);
+                });
+                hexInput.addEventListener('change', () => {
+                    input.value = hexInput.value;
+                    liveUpdate(hexInput.value);
+                });
+                row.append(label, input, hexInput);
+            } else {
+                input.addEventListener('change', (e) => liveUpdate(e.target.value));
+                row.append(label, input);
             }
 
-            const liveUpdate = (e) => {
+            const liveUpdate = (val) => {
                 if (!this.stateManager.state.theme) this.stateManager.state.theme = {};
-                this.stateManager.state.theme[key] = e.target.value;
+                this.stateManager.state.theme[key] = val;
                 this.themeManager.updateTheme(this.stateManager.state.theme);
                 this.stateManager.save();
             };
 
-            input.addEventListener('input', liveUpdate);
-            if (textInput) textInput.addEventListener('change', liveUpdate);
-
-            row.append(label, input);
-            if (textInput) row.appendChild(textInput);
             container.appendChild(row);
         }
         return container;
     }
 
     createFooterButtons() {
-        const saveButton = document.createElement('button');
-        saveButton.textContent = "Save Theme";
-        saveButton.onclick = () => this.handleSaveTheme();
+        const footer = document.createElement('div');
+        footer.className = 'floating-panel-footer';
 
-        const loadButton = document.createElement('button');
-        loadButton.textContent = "Load Theme";
-        loadButton.onclick = () => this.handleLoadTheme();
-
-        const defaultButton = document.createElement('button');
-        defaultButton.textContent = "Set as Default";
-        defaultButton.onclick = () => this.handleSetDefault();
-
-        const resetButton = document.createElement('button');
-        resetButton.textContent = "Reset";
-        resetButton.onclick = () => {
-            this.stateManager.state.theme = this.themeManager.resetToDefault();
-            this.stateManager.save();
-            this.modal.close();
-            this.show(); // Re-open to show reset values
+        const createBtn = (text, onClick) => {
+            const btn = document.createElement('button');
+            btn.textContent = text;
+            btn.onclick = onClick;
+            return btn;
         };
 
-        return [resetButton, loadButton, saveButton, defaultButton];
+        footer.append(
+            createBtn("Reset", () => {
+                this.stateManager.state.theme = this.themeManager.resetToDefault();
+                this.stateManager.save();
+                this.close();
+                this.show();
+            }),
+            createBtn("Load", () => this.handleLoadTheme()),
+            createBtn("Save", () => this.handleSaveTheme()),
+            createBtn("Default", () => this.handleSetDefault())
+        );
+        return footer;
     }
 
     async handleSaveTheme() {
-        const filename = prompt("Enter a name for your theme (e.g., 'my-theme'). It will be saved as a .json file in your user folder.");
+        const filename = prompt("Theme Name:");
         if (!filename) return;
-
         try {
-            const response = await fetch('/thoughtbubble/themes/save', {
+            await fetch('/thoughtbubble/themes/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ filename: `${filename}.json`, content: this.stateManager.state.theme }),
             });
-            if (!response.ok) throw new Error((await response.json()).error);
-            alert("Theme saved successfully!");
-        } catch (error) {
-            console.error("Failed to save theme:", error);
-            alert(`Error: ${error.message}`);
-        }
+            alert("Saved!");
+        } catch (error) { alert(error.message); }
     }
 
     async handleLoadTheme() {
-        const loadModal = new ThoughtBubbleModal();
+        const body = this.panel.querySelector('.floating-panel-body');
+        body.innerHTML = '<div style="padding:10px">Loading...</div>';
+
         try {
-            // --- MODIFIED: Fetch from both user and default theme endpoints ---
-            const [userThemesRes, defaultThemesRes] = await Promise.all([
+            const [userRes, defRes] = await Promise.all([
                 fetch('/thoughtbubble/themes/list'),
-                fetch('/thoughtbubble/themes/list_default') // The new endpoint
+                fetch('/thoughtbubble/themes/list_default')
             ]);
+            const userThemes = await userRes.json();
+            const defThemes = await defRes.json();
 
-            if (!userThemesRes.ok || !defaultThemesRes.ok) throw new Error('Failed to fetch theme lists.');
+            body.innerHTML = '';
+            const list = document.createElement('div');
+            list.className = 'thought-bubble-file-list';
 
-            const userThemes = await userThemesRes.json();
-            const defaultThemes = await defaultThemesRes.json();
-
-            const listContainer = document.createElement('div');
-
-            // Helper to create a theme item in the list
-            const createItem = (file) => {
-                const item = document.createElement('div');
-                item.textContent = file.replace('.json', '');
-                item.className = 'thought-bubble-file-item';
-                item.onclick = async () => {
-                    // The /load endpoint now checks both locations, so this works as-is
-                    const loadResponse = await fetch(`/thoughtbubble/themes/load?filename=${file}`);
-                    const themeData = await loadResponse.json();
-                    this.stateManager.state.theme = themeData;
-                    this.themeManager.updateTheme(themeData);
-                    this.stateManager.save();
-                    loadModal.close();
-                    this.modal.close(); // Also close the main editor
-                };
-                listContainer.appendChild(item);
+            const addHeader = (text) => {
+                const h = document.createElement('div');
+                h.className = 'thought-bubble-theme-header';
+                h.textContent = text;
+                list.appendChild(h);
             };
 
-            // --- MODIFIED: Display themes in categorized sections ---
+            const addItem = (name) => {
+                const item = document.createElement('div');
+                item.className = 'thought-bubble-file-item';
+                item.textContent = name.replace('.json', '');
+                item.onclick = async () => {
+                    const r = await fetch(`/thoughtbubble/themes/load?filename=${name}`);
+                    const data = await r.json();
+                    this.stateManager.state.theme = data;
+                    this.themeManager.updateTheme(data);
+                    this.stateManager.save();
+                    this.close();
+                    this.show();
+                };
+                list.appendChild(item);
+            };
 
-            // Display User Themes
-            if (userThemes.length > 0) {
-                const header = document.createElement('div');
-                header.className = 'thought-bubble-theme-header';
-                header.textContent = 'Your Themes';
-                listContainer.appendChild(header);
-                userThemes.forEach(createItem);
-            }
+            if (userThemes.length) { addHeader("USER"); userThemes.forEach(addItem); }
+            if (defThemes.length) { addHeader("PRESETS"); defThemes.forEach(addItem); }
 
-            // Display Default Themes
-            if (defaultThemes.length > 0) {
-                if (userThemes.length > 0) {
-                    // Add a separator if both lists have content
-                    listContainer.appendChild(document.createElement('hr'));
-                }
-                const header = document.createElement('div');
-                header.className = 'thought-bubble-theme-header';
-                header.textContent = 'Default Themes';
-                listContainer.appendChild(header);
-                defaultThemes.forEach(createItem);
-            }
+            const backBtn = document.createElement('button');
+            backBtn.textContent = "← Back to Editor";
+            backBtn.style.cssText = "width:100%; padding:8px; background:none; border:none; color:#ccc; cursor:pointer;";
+            backBtn.onclick = () => {
+                this.close();
+                this.show();
+            };
 
-            // Handle case where no themes are found at all
-            if (userThemes.length === 0 && defaultThemes.length === 0) {
-                listContainer.textContent = "No themes found. Save a theme to get started!";
-            }
+            body.appendChild(backBtn);
+            body.appendChild(list);
 
-            loadModal.show('Load Theme', listContainer);
-
-        } catch (error) {
-            console.error("Failed to load themes:", error);
-            alert(`Error: ${error.message}`);
+        } catch (e) {
+            body.textContent = "Error loading themes.";
         }
     }
 
     async handleSetDefault() {
-        const themeToSave = this.stateManager.state.theme;
-        try {
-            const response = await fetch('/thoughtbubble/themes/default/set', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(themeToSave),
-            });
-            if (!response.ok) throw new Error('Failed to set default theme.');
-            alert("Current theme set as default for new nodes.");
-        } catch (error) {
-            console.error("Failed to set default theme:", error);
-            alert(`Error: ${error.message}`);
-        }
+        await fetch('/thoughtbubble/themes/default/set', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(this.stateManager.state.theme),
+        });
+        alert("Default Set!");
     }
 }

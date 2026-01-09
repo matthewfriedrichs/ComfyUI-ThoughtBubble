@@ -1,4 +1,4 @@
-// filename: matthewfriedrichs/comfyui-thoughtbubble/ComfyUI-ThoughtBubble-20e653b2daf632dadb0bcffb4406cb4f0b5f56a7/js/box-types/textBox.js
+// js/box-types/textBox.js
 
 import { BaseBox } from "./baseBox.js";
 import { app } from "../../../../scripts/app.js";
@@ -95,6 +95,11 @@ export class TextBox extends BaseBox {
         });
 
         contentEl.appendChild(textarea);
+    }
+
+    // --- LIFECYCLE CLEANUP ---
+    destroy() {
+        this.closeAutocomplete(); // Removes any floating dropdown from body
     }
 
     // --- VISUAL PARENTHESIS MATCHING ---

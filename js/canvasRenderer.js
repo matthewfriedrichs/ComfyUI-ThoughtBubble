@@ -10,34 +10,61 @@ export class CanvasRenderer {
         this.contextMenu = contextMenu;
         this.stateManager = stateManager;
 
-        // --- FIX: Rename property to match what toolbar.js expects ---
         this.lastActiveBoxInfo = null;
 
-        // --- NEW: Minimap setup ---
+        // --- SAFEGUARD: Handle missing minimap element gracefully ---
         this.minimapEl = minimapEl;
-        this.minimapCtx = this.minimapEl.getContext("2d");
-        this.minimapPadding = 10; // Padding inside the minimap canvas
+        if (this.minimapEl) {
+            this.minimapCtx = this.minimapEl.getContext("2d");
+        } else {
+            console.warn("ThoughtBubble: Minimap element not provided to renderer.");
+        }
+        this.minimapPadding = 10;
     }
 
-    render() {
+    /**
+     * LIGHTWEIGHT UPDATE: Use this for Panning and Zooming.
+     */
+    updateView() {
         const state = this.stateManager.state;
         if (!state) return;
 
-        this.worldEl.innerHTML = "";
         this.worldEl.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
 
         this.drawGrid();
 
-        for (const box of state.boxes) {
-            this.drawBox(box);
+        // Only draw minimap if enabled AND initialized
+        if (state.showMinimap && this.minimapCtx) {
+            if (this.minimapEl) this.minimapEl.style.display = 'block';
+            this.drawMinimap();
+        } else if (this.minimapEl) {
+            this.minimapEl.style.display = 'none';
+        }
+    }
+
+    /**
+     * HEAVY RENDER: Destroys and rebuilds DOM.
+     */
+    render() {
+        const state = this.stateManager.state;
+        if (!state) return;
+
+        // Cleanup existing instances
+        if (state.boxes) {
+            for (const box of state.boxes) {
+                if (box.instance && typeof box.instance.destroy === 'function') {
+                    box.instance.destroy();
+                }
+                box.instance = null;
+            }
         }
 
-        // --- NEW: Render minimap ---
-        if (state.showMinimap) {
-            this.minimapEl.style.display = 'block';
-            this.drawMinimap();
-        } else {
-            this.minimapEl.style.display = 'none';
+        this.worldEl.innerHTML = "";
+
+        this.updateView();
+
+        for (const box of state.boxes) {
+            this.drawBox(box);
         }
     }
 
@@ -112,17 +139,13 @@ export class CanvasRenderer {
                 boxData: box,
                 fullState: this.stateManager.state,
                 requestSave: () => this.stateManager.save(),
-
-                // --- FIX: This callback now correctly sets the object ---
                 setLastActiveTextarea: (textarea) => {
                     this.lastActiveBoxInfo = { box: box, textarea: textarea };
                 },
                 canvasEl: this.canvasEl
             });
 
-            // This is crucial for the update logic to find the live instance of the box.
             box.instance = boxInstance;
-
             boxInstance.render(contentEl);
         } else {
             console.warn(`ThoughtBubble: Unknown box type "${box.type}"`);
@@ -132,15 +155,13 @@ export class CanvasRenderer {
 
     showCreationMenu(x, y) {
         this.contextMenu.innerHTML = '';
-
         for (const [type] of boxTypeRegistry.entries()) {
             const item = document.createElement('div');
             item.className = 'thought-bubble-context-menu-item';
-            item.textContent = `Create ${type}`; // <-- Simple text
+            item.textContent = `Create ${type}`;
             item.dataset.boxType = type;
             this.contextMenu.appendChild(item);
         }
-
         this.contextMenu.style.left = `${x}px`;
         this.contextMenu.style.top = `${y}px`;
         this.contextMenu.style.display = 'block';
@@ -150,20 +171,19 @@ export class CanvasRenderer {
         this.contextMenu.style.display = 'none';
     }
 
-    // --- NEW: Minimap drawing logic ---
     drawMinimap() {
         const state = this.stateManager.state;
-        if (state.boxes.length === 0) {
+        // Safety checks
+        if (!this.minimapCtx || !this.minimapEl) return;
+        if (!state.boxes || state.boxes.length === 0) {
             this.minimapCtx.clearRect(0, 0, this.minimapEl.width, this.minimapEl.height);
             return;
         }
 
-        // 1. Get computed styles for colors
         const style = getComputedStyle(this.canvasEl);
         const boxColor = style.getPropertyValue('--tb-header-text-color') || '#ddd';
         const viewColor = style.getPropertyValue('--tb-accent-color') || '#5c5';
 
-        // 2. Find bounds of all boxes
         const bounds = state.boxes.reduce((b, box) => {
             return {
                 minX: Math.min(b.minX, box.x),
@@ -175,12 +195,13 @@ export class CanvasRenderer {
 
         const contentW = bounds.maxX - bounds.minX;
         const contentH = bounds.maxY - bounds.minY;
-        if (contentW === 0 || contentH === 0) {
+
+        // Prevent division by zero or infinity
+        if (contentW <= 0 || contentH <= 0 || !isFinite(contentW)) {
             this.minimapCtx.clearRect(0, 0, this.minimapEl.width, this.minimapEl.height);
             return;
         }
 
-        // 3. Calculate scale and offset
         const mapW = this.minimapEl.width - this.minimapPadding * 2;
         const mapH = this.minimapEl.height - this.minimapPadding * 2;
 
@@ -189,10 +210,8 @@ export class CanvasRenderer {
         const offsetX = (this.minimapEl.width - contentW * scale) / 2 - bounds.minX * scale;
         const offsetY = (this.minimapEl.height - contentH * scale) / 2 - bounds.minY * scale;
 
-        // 4. Draw
         this.minimapCtx.clearRect(0, 0, this.minimapEl.width, this.minimapEl.height);
 
-        // Draw boxes
         this.minimapCtx.fillStyle = boxColor;
         for (const box of state.boxes) {
             this.minimapCtx.fillRect(
@@ -203,7 +222,6 @@ export class CanvasRenderer {
             );
         }
 
-        // Draw viewport
         const viewW = this.canvasEl.clientWidth / state.zoom;
         const viewH = (this.canvasEl.clientHeight - TOOLBAR_HEIGHT) / state.zoom;
         const viewX = -state.pan.x / state.zoom;

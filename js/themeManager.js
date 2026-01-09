@@ -32,16 +32,38 @@ export class ThemeManager {
             document.head.appendChild(styleTag);
         }
 
+        // Generate standard vars AND rgb triplet vars for rgba() usage
         const cssProperties = Object.entries(this.themeData)
-            .map(([key, value]) => `${key}: ${value};`)
+            .map(([key, value]) => {
+                let lines = `${key}: ${value};`;
+
+                // If value is a hex color, create an RGB version
+                // e.g. --tb-bg-color: #ff0000 => --tb-bg-color-rgb: 255, 0, 0;
+                if (value.match(/^#[0-9A-Fa-f]{3,6}$/)) {
+                    const rgb = this.hexToRgb(value);
+                    if (rgb) {
+                        lines += `\n${key}-rgb: ${rgb};`;
+                    }
+                }
+                return lines;
+            })
             .join('\n');
 
-        // Apply the theme variables to the specific widget container
         styleTag.textContent = `
             .thought-bubble-widget-container[data-node-id="${this.nodeId}"] {
                 ${cssProperties}
             }
         `;
+    }
+
+    // Helper: #ff0000 -> "255, 0, 0"
+    hexToRgb(hex) {
+        hex = hex.replace('#', '');
+        if (hex.length === 3) {
+            hex = hex.split('').map(c => c + c).join('');
+        }
+        const num = parseInt(hex, 16);
+        return `${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}`;
     }
 
     updateTheme(newThemeData) {

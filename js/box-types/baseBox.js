@@ -41,7 +41,7 @@ export class BaseBox {
 
         this.boxData = boxData;
         this.requestSave = requestSave;
-        
+
         // Optional properties for extended context if needed by subclasses
         this.node = node;
         this.fullState = fullState;
@@ -55,6 +55,14 @@ export class BaseBox {
      */
     render(contentEl) {
         throw new Error(`The '${this.constructor.name}' class must implement the render() method.`);
+    }
+
+    /**
+     * Cleans up resources (event listeners, external DOM elements) before the box is removed.
+     * Subclasses should override this if they attach global listeners or append elements to document.body.
+     */
+    destroy() {
+        // Optional: Override in subclasses if cleanup is needed.
     }
 
     /**
