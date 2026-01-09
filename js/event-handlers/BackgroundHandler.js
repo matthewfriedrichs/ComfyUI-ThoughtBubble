@@ -1,5 +1,3 @@
-// js/event-handlers/BackgroundHandler.js
-
 export class BackgroundHandler {
     constructor(stateManager, renderer, setActiveOperation, getCanvasMousePos, getWorldMouseCoords) {
         this.stateManager = stateManager;
@@ -24,6 +22,13 @@ export class BackgroundHandler {
     }
 
     handleWheel(e) {
+        // --- FIX: Respect scrollable elements ---
+        if (this.isEventTargetScrollable(e)) {
+            // Do NOT preventDefault(); let the browser scroll the element.
+            // Do NOT zoom.
+            return;
+        }
+
         e.preventDefault();
         const state = this.stateManager.state;
         const mouse = this.getCanvasMousePos(e);
@@ -37,8 +42,28 @@ export class BackgroundHandler {
         state.zoom = newZoom;
 
         this.stateManager.save();
-        // --- OPTIMIZATION: Use light updateView instead of full render ---
         this.renderer.updateView();
+    }
+
+    // --- NEW: Helper to detect if we should allow scrolling instead of zooming ---
+    isEventTargetScrollable(e) {
+        let el = e.target;
+
+        // Traverse up the DOM tree from the target to the canvas root
+        while (el && el !== this.renderer.canvasEl) {
+            // 1. Always scroll standard input elements
+            if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') return true;
+
+            // 2. Check for generic scrollable containers (divs with overflow)
+            const style = window.getComputedStyle(el);
+            const isScrollableY = ['auto', 'scroll'].includes(style.overflowY) && el.scrollHeight > el.clientHeight;
+            const isScrollableX = ['auto', 'scroll'].includes(style.overflowX) && el.scrollWidth > el.clientWidth;
+
+            if (isScrollableY || isScrollableX) return true;
+
+            el = el.parentElement;
+        }
+        return false;
     }
 
     startPan(e) {
@@ -71,7 +96,6 @@ export class BackgroundHandler {
                 const dy = mouse.y - op.startMouse.y;
                 this.stateManager.state.pan.x = op.startPan.x + dx;
                 this.stateManager.state.pan.y = op.startPan.y + dy;
-                // --- OPTIMIZATION: Use light updateView instead of full render ---
                 this.renderer.updateView();
                 break;
             }
@@ -97,7 +121,6 @@ export class BackgroundHandler {
         switch (op.type) {
             case 'pan':
                 this.stateManager.save();
-                // --- OPTIMIZATION: Use light updateView ---
                 this.renderer.updateView();
                 break;
             case 'drag-create': {
@@ -109,7 +132,6 @@ export class BackgroundHandler {
                     const worldX = Math.min(op.startCoords.x, worldMouse.x);
                     const worldY = Math.min(op.startCoords.y, worldMouse.y);
                     this.stateManager.createNewBox(this.stateManager.lastSelectedBoxType, worldX, worldY, width, height);
-                    // Creating a box changes DOM, so we must use full render here
                     this.renderer.render();
                 }
                 break;
