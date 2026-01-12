@@ -56,90 +56,95 @@ app.registerExtension({
         if (node.comfyClass !== "ThoughtBubbleNode") return;
 
         try {
-            // --- Default Theme Loading ---
-            try {
-                const response = await fetch('/thoughtbubble/themes/default/get');
-                if (response.ok) {
-                    const defaultTheme = await response.json();
-                    const data = JSON.parse(node.widgets.find(w => w.name === "canvas_data").value);
-                    if (Object.keys(data.theme || {}).length === 0) {
-                        data.theme = defaultTheme;
-                        node.widgets.find(w => w.name === "canvas_data").value = JSON.stringify(data);
-                    }
+            const response = await fetch('/thoughtbubble/themes/default/get');
+            if (response.ok) {
+                const defaultTheme = await response.json();
+                const data = JSON.parse(node.widgets.find(w => w.name === "canvas_data").value);
+                if (Object.keys(data.theme || {}).length === 0) {
+                    data.theme = defaultTheme;
+                    node.widgets.find(w => w.name === "canvas_data").value = JSON.stringify(data);
                 }
-            } catch (e) { console.error("Could not load default ThoughtBubble theme", e); }
+            }
+        } catch (e) { console.error("Could not load default ThoughtBubble theme", e); }
 
-            const dataWidget = node.widgets.find(w => w.name === "canvas_data");
-            dataWidget.hidden = true;
-            dataWidget.computeSize = function (width) { return [width, 0]; }
+        const dataWidget = node.widgets.find(w => w.name === "canvas_data");
+        dataWidget.hidden = true;
 
-            // --- DOM Setup ---
-            const widgetContainer = document.createElement("div");
-            widgetContainer.className = "thought-bubble-widget-container";
-            widgetContainer.dataset.nodeId = node.id;
-            widgetContainer.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+        dataWidget.computeSize = function (width) { return [width, 0]; }
 
-            const canvasWidget = node.addDOMWidget("thought_bubble", "div", widgetContainer);
+        const widgetContainer = document.createElement("div");
+        widgetContainer.className = "thought-bubble-widget-container";
+        widgetContainer.dataset.nodeId = node.id;
 
-            const canvasEl = document.createElement("div"); canvasEl.className = "thought-bubble-widget";
-            const worldEl = document.createElement("div"); worldEl.className = "thought-bubble-world";
-            const gridEl = document.createElement("div"); gridEl.className = "thought-bubble-grid";
-            const toolbarEl = document.createElement("div"); toolbarEl.className = "thought-bubble-toolbar";
-            const contextMenu = document.createElement("div"); contextMenu.className = "thought-bubble-context-menu";
-            const minimapEl = document.createElement("canvas"); minimapEl.className = "thought-bubble-minimap";
+        // Stop mouse events from propagating to the main ComfyUI canvas
+        widgetContainer.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+        });
 
-            canvasEl.append(gridEl, worldEl, toolbarEl, contextMenu, minimapEl);
-            widgetContainer.appendChild(canvasEl);
+        const canvasWidget = node.addDOMWidget("thought_bubble", "div", widgetContainer);
 
-            // --- Logic Initialization ---
-            node.stateManager = new StateManager(dataWidget);
-            const themeManager = new ThemeManager(node.id, node.stateManager.state.theme);
-            const renderer = new CanvasRenderer(canvasEl, worldEl, gridEl, contextMenu, node.stateManager, minimapEl);
+        const canvasEl = document.createElement("div"); canvasEl.className = "thought-bubble-widget";
 
-            new CanvasEvents(canvasEl, worldEl, renderer, node.stateManager);
+        // --- FIX: Scroll Lock ---
+        // Prevents the browser from scrolling the container when the text cursor moves off-screen.
+        // This keeps the Toolbar and Grid locked in place.
+        canvasEl.addEventListener('scroll', () => {
+            if (canvasEl.scrollTop !== 0 || canvasEl.scrollLeft !== 0) {
+                canvasEl.scrollTop = 0;
+                canvasEl.scrollLeft = 0;
+            }
+        });
 
-            node.toolbar = new Toolbar(toolbarEl, node.stateManager, renderer, themeManager);
+        const worldEl = document.createElement("div"); worldEl.className = "thought-bubble-world";
+        const gridEl = document.createElement("div"); gridEl.className = "thought-bubble-grid";
+        const toolbarEl = document.createElement("div"); toolbarEl.className = "thought-bubble-toolbar";
+        const contextMenu = document.createElement("div"); contextMenu.className = "thought-bubble-context-menu";
+        const minimapEl = document.createElement("canvas"); minimapEl.className = "thought-bubble-minimap";
 
-            renderer.render();
+        canvasEl.append(gridEl, worldEl, toolbarEl, contextMenu, minimapEl);
+        widgetContainer.appendChild(canvasEl);
 
-            // --- Resize & Redraw Logic ---
-            const originalOnDrawForeground = node.onDrawForeground;
-            node.onDrawForeground = function () {
-                this.size[0] = Math.max(800, this.size[0]);
-                this.size[1] = Math.max(600, this.size[1]);
+        node.stateManager = new StateManager(dataWidget);
+        const themeManager = new ThemeManager(node.id, node.stateManager.state.theme);
+        const renderer = new CanvasRenderer(canvasEl, worldEl, gridEl, contextMenu, node.stateManager, minimapEl);
 
-                originalOnDrawForeground?.apply(this, arguments);
+        new CanvasEvents(canvasEl, worldEl, renderer, node.stateManager);
 
-                let sizeChanged = false;
-                if (canvasWidget) {
-                    const spaceAboveCanvas = Math.round(canvasWidget.last_y);
-                    const availableHeight = Math.round(node.size[1]) - spaceAboveCanvas - 15;
-                    const newHeight = `${Math.max(100, availableHeight)}px`;
-                    if (widgetContainer.style.height !== newHeight) {
-                        widgetContainer.style.height = newHeight;
-                        sizeChanged = true;
-                    }
+        node.toolbar = new Toolbar(toolbarEl, node.stateManager, renderer, themeManager);
+
+        renderer.render();
+
+        const originalOnDrawForeground = node.onDrawForeground;
+        node.onDrawForeground = function () {
+            this.size[0] = Math.max(800, this.size[0]);
+            this.size[1] = Math.max(600, this.size[1]);
+
+            originalOnDrawForeground?.apply(this, arguments);
+
+            let sizeChanged = false;
+            if (canvasWidget) {
+                const spaceAboveCanvas = Math.round(canvasWidget.last_y);
+                const availableHeight = Math.round(node.size[1]) - spaceAboveCanvas - 15;
+                const newHeight = `${Math.max(100, availableHeight)}px`;
+                if (widgetContainer.style.height !== newHeight) {
+                    widgetContainer.style.height = newHeight;
+                    sizeChanged = true;
                 }
+            }
 
-                const dataChanged = dataWidget.value !== node.stateManager.lastKnownValue;
+            const dataChanged = dataWidget.value !== node.stateManager.lastKnownValue;
 
-                if (dataChanged) {
-                    node.stateManager.load();
-                    themeManager.updateTheme(node.stateManager.state.theme);
-                    node.toolbar._init();
-                }
+            if (dataChanged) {
+                node.stateManager.load();
+                themeManager.updateTheme(node.stateManager.state.theme);
+                node.toolbar._init();
+            }
 
-                if (dataChanged || sizeChanged) {
-                    renderer.render();
-                }
-            };
+            if (dataChanged || sizeChanged) {
+                renderer.render();
+            }
+        };
 
-            app.canvas.draw(true, true);
-
-        } catch (error) {
-            console.error("CRITICAL ERROR in ThoughtBubble nodeCreated:", error);
-            // Print stack trace to help debug "Object Object Object"
-            console.log(error.stack);
-        }
+        app.canvas.draw(true, true);
     }
 });

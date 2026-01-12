@@ -1,5 +1,3 @@
-// js/box-types/textBox.js
-
 import { BaseBox } from "./baseBox.js";
 import { app } from "../../../../scripts/app.js";
 
@@ -71,7 +69,6 @@ export class TextBox extends BaseBox {
 
         textarea.addEventListener('focus', (e) => {
             if (this.setLastActiveTextarea) this.setLastActiveTextarea(textarea);
-            // Re-run visuals on focus to clear any "Pending Open" errors
             this.updateVisuals();
         });
 
@@ -86,7 +83,6 @@ export class TextBox extends BaseBox {
 
         textarea.addEventListener('blur', () => {
             this.closeAutocomplete();
-            // Re-run visuals on blur to catch "Pending Open" errors
             this.updateVisuals();
         });
 
@@ -99,7 +95,7 @@ export class TextBox extends BaseBox {
 
     // --- LIFECYCLE CLEANUP ---
     destroy() {
-        this.closeAutocomplete(); // Removes any floating dropdown from body
+        this.closeAutocomplete();
     }
 
     // --- VISUAL PARENTHESIS MATCHING ---
@@ -109,16 +105,10 @@ export class TextBox extends BaseBox {
         const cursorIndex = this.textarea.selectionStart;
         const isFocused = (document.activeElement === this.textarea);
 
-        // 1. Analyze structure (Separating Open/Close errors)
         const analysis = this.analyzeParentheses(text);
 
-        // 2. Determine Error State (Blinking Background)
         const hasClosingErrors = analysis.unmatchedCloses.size > 0;
         const hasOpeningErrors = analysis.unmatchedOpens.size > 0;
-
-        // SMART LOGIC: 
-        // - Always blink for extra closing ')' (Immediate syntax error)
-        // - Only blink for extra opening '(' if we have lost focus (User finished typing)
         const shouldBlink = hasClosingErrors || (hasOpeningErrors && !isFocused);
 
         if (shouldBlink) {
@@ -127,22 +117,18 @@ export class TextBox extends BaseBox {
             this.textarea.classList.remove('thought-bubble-input-error');
         }
 
-        // 3. Identify Highlights
         const desiredHighlights = new Map();
 
-        // A. Unmatched Closes: ALWAYS Red Overlay
         analysis.unmatchedCloses.forEach(index => {
             desiredHighlights.set(index, { type: 'error', level: 0 });
         });
 
-        // B. Unmatched Opens: Red Overlay ONLY if not focused
         if (!isFocused) {
             analysis.unmatchedOpens.forEach(index => {
                 desiredHighlights.set(index, { type: 'error', level: 0 });
             });
         }
 
-        // C. Matches: Rainbow Colors
         for (const pair of analysis.pairs) {
             if (cursorIndex >= pair.open && cursorIndex <= pair.close + 1) {
                 desiredHighlights.set(pair.open, { type: 'match', level: pair.depth });
@@ -150,7 +136,6 @@ export class TextBox extends BaseBox {
             }
         }
 
-        // 4. Render
         this.renderHighlights(desiredHighlights, text);
     }
 
@@ -168,12 +153,11 @@ export class TextBox extends BaseBox {
                     const open = stack.pop();
                     pairs.push({ open: open.index, close: i, depth: open.depth });
                 } else {
-                    unmatchedCloses.add(i); // Immediate Error: unmatched closing
+                    unmatchedCloses.add(i);
                 }
             }
         }
 
-        // Remaining items in stack are unmatched opens
         const unmatchedOpens = new Set();
         while (stack.length > 0) {
             unmatchedOpens.add(stack.pop().index);
@@ -183,7 +167,6 @@ export class TextBox extends BaseBox {
     }
 
     renderHighlights(desiredHighlights, text) {
-        // 1. CLEANUP OLD
         for (const [index, el] of this.activeHighlightEls) {
             if (!desiredHighlights.has(index)) {
                 const currentChar = text[index];
@@ -207,7 +190,6 @@ export class TextBox extends BaseBox {
             letterSpacing: computed.letterSpacing
         };
 
-        // 2. CREATE / UPDATE
         for (const [index, data] of desiredHighlights) {
             let el = this.activeHighlightEls.get(index);
 
@@ -435,8 +417,6 @@ export class TextBox extends BaseBox {
             const item = this.createDropdownItem(loraName, () => {
                 const fullText = this.textarea.value;
                 const commandStart = match.index;
-                let commandEnd = fullText.indexOf(')', commandStart);
-                if (commandEnd === -1) commandEnd = fullText.length; else commandEnd += 1;
                 this.insertAutocompleteText(`lora(${loraName}:1.0)`, match.index, true);
             });
             dropdown.appendChild(item);
@@ -453,7 +433,9 @@ export class TextBox extends BaseBox {
         const caretCoords = getCaretCoordinates(this.textarea, this.textarea.selectionEnd);
         const rect = this.textarea.getBoundingClientRect();
 
-        const xPos = rect.left + caretCoords.left - this.textarea.scrollLeft;
+        // --- FIX: Align X to left edge of box, keep Y dynamic ---
+        // Old drifted code: const xPos = rect.left + caretCoords.left - this.textarea.scrollLeft;
+        const xPos = rect.left;
         const yPos = rect.top + caretCoords.top + 20 - this.textarea.scrollTop;
 
         dropdown.style.left = `${xPos}px`;
@@ -484,8 +466,17 @@ export class TextBox extends BaseBox {
 
     insertAutocompleteText(newCommand, startIndex, isLora = false) {
         const fullText = this.textarea.value;
+        const cursorPos = this.textarea.selectionEnd;
+
         let commandEnd = fullText.indexOf(')', startIndex);
-        if (commandEnd === -1) commandEnd = fullText.length; else commandEnd += 1;
+        const distanceToClose = commandEnd - startIndex;
+        const isCloseParenFar = distanceToClose > 100 || fullText.slice(startIndex, commandEnd).includes('\n');
+
+        if (commandEnd === -1 || isCloseParenFar) {
+            commandEnd = cursorPos;
+        } else {
+            commandEnd += 1;
+        }
 
         const textBefore = fullText.slice(0, startIndex);
         const textAfter = fullText.slice(commandEnd);
@@ -496,8 +487,10 @@ export class TextBox extends BaseBox {
         this.requestSave();
 
         let newCursorPos = (textBefore + newCommand).length - 1;
+
         if (isLora) {
-            newCursorPos = (textBefore + newCommand.split(':')[0]).length;
+            const parts = newCommand.split(':');
+            newCursorPos = (textBefore + parts[0]).length + 1;
         }
 
         this.textarea.focus();

@@ -13,12 +13,12 @@ import torch
 
 class ThoughtBubbleNode:
     WILDCARD_CACHE = {}
-    LORA_CACHE = {}
+    # LORA_CACHE removed to prevent memory leaks
     TEXTFILE_DIRECTORY = None
     TEXTFILE_CACHE = {}
 
     def __init__(self):
-        # Instance-level cache
+        # Instance-level cache for models and conditioning
         self.cached_model = None
         self.cached_clip = None
         self.last_lora_config = None
@@ -115,8 +115,7 @@ class ThoughtBubbleNode:
 
         box_map, area_boxes = {}, {}
         raw_prompt_source, command_links = "", {}
-        # Default to space to ensure valid conditioning generation from start
-        positive_prompt, negative_prompt = " ", " "
+        positive_prompt, negative_prompt = "", ""
         positive_conditioning, negative_conditioning = [], []
         model_out, clip_out = model, clip
 
@@ -144,35 +143,23 @@ class ThoughtBubbleNode:
                             all_control_vars_by_name[var_name] = var_value
 
             for box in boxes:
-                # --- UPDATE: Mute falls back to " " ---
-                if box.get("muted") is True:
-                    content = " "
-                else:
-                    content = box.get("content", "")
-                # --------------------------------------
-
                 title = box.get("title", "").strip().lower()
                 if title:
-                    box_map[title] = content
+                    box_map[title] = box.get("content", "")
                     if box.get("type") == "area":
                         area_boxes[title] = box
                 if title == "output":
-                    output_box_content = content
+                    output_box_content = box.get("content", "")
                     command_links = box.get("commandLinks", {})
                 if box.get("displayState") == "maximized" and maximized_box is None:
                     maximized_box = box
 
-            # Use Maximized Box or Output Box
             if maximized_box:
-                if maximized_box.get("muted") is True:
-                    raw_prompt_source = " "
-                else:
-                    raw_prompt_source = maximized_box.get("content", "")
+                raw_prompt_source = maximized_box.get("content", "")
                 command_links = maximized_box.get("commandLinks", {})
             elif output_box_content is not None:
                 raw_prompt_source = output_box_content
 
-            # Process Prompts
             if raw_prompt_source:
                 rng = random.Random()
                 rng.seed(seed)
@@ -190,7 +177,6 @@ class ThoughtBubbleNode:
                 )
                 positive_prompt, negative_prompt = parser.parse(raw_prompt_source)
 
-                # Apply LoRAs
                 if model is not None and clip is not None:
                     loras_to_load = parser.loras_to_load
                     if not loras_to_load:
@@ -202,6 +188,7 @@ class ThoughtBubbleNode:
                         model_out, clip_out = model, clip
                     else:
                         current_lora_config = tuple(sorted(loras_to_load))
+                        # Use instance caching for the *result* (patched model), which is safe
                         if (
                             self.cached_model is not None
                             and self.last_input_model_id == id(model)
@@ -218,32 +205,15 @@ class ThoughtBubbleNode:
                                 id(model),
                             )
 
-            # --- SAFETY: Final guarantee that outputs are not empty ---
-            if not positive_prompt or positive_prompt.strip() == "":
-                positive_prompt = " "
-            if not negative_prompt or negative_prompt.strip() == "":
-                negative_prompt = " "
-            # ----------------------------------------------------------
-
             if clip_out is not None:
-                # --- AREA CONDITIONING ---
                 current_area_config = None
                 if hasattr(parser, "areas_to_apply") and parser.areas_to_apply:
                     config_list = []
                     for title in sorted(parser.areas_to_apply):
                         if title in area_boxes:
                             area_box = area_boxes[title]
-
-                            # Mute logic for areas
-                            if area_box.get("muted") is True:
-                                area_content = " "
-                            else:
-                                area_content = area_box.get("content", "")
-
-                            area_prompt, _ = parser.parse(area_content)
-
-                            # Only apply area if it has actual content (ignore " " space-only strings)
-                            if area_prompt and area_prompt.strip():
+                            area_prompt, _ = parser.parse(area_box.get("content", ""))
+                            if area_prompt:
                                 config_list.append(
                                     (
                                         area_prompt,
@@ -258,7 +228,6 @@ class ThoughtBubbleNode:
                                 )
                     current_area_config = tuple(config_list)
 
-                # --- TIMED CONDITIONING ---
                 current_timed_config = None
                 if hasattr(parser, "scheduled_prompts") and parser.scheduled_prompts:
                     current_timed_config = tuple(
@@ -268,7 +237,6 @@ class ThoughtBubbleNode:
                         )
                     )
 
-                # --- CACHING LOGIC ---
                 if (
                     self.cached_positive_cond is not None
                     and self.last_clip_id == id(clip_out)
@@ -333,8 +301,10 @@ class ThoughtBubbleNode:
                                 timed_cond_data[0][0],
                                 timed_cond_data[0][1].copy(),
                             )
+
                             cond_dict["start_at"] = float(start_at)
                             cond_dict["end_at"] = float(end_at)
+
                             positive_conditioning.append([cond_tensor, cond_dict])
 
                     self.cached_positive_cond = positive_conditioning
@@ -360,13 +330,13 @@ class ThoughtBubbleNode:
         )
 
     def text_to_conditioning(self, clip, text):
-        # Force single space if empty to prevent encoding errors
-        if not text or text.strip() == "":
-            text = " "
+        if not text:
+            return []
 
         if hasattr(clip, "clip_l") and hasattr(clip, "clip_g"):
             tokens_l = clip.clip_l.tokenize(text)
             tokens_g = clip.clip_g.tokenize(text)
+
             max_len = max(len(tokens_l["l"]), len(tokens_g["g"]))
 
             if len(tokens_l["l"]) < max_len:
@@ -383,10 +353,9 @@ class ThoughtBubbleNode:
             cond_g, pooled_g = clip.clip_g.encode_from_tokens(
                 tokens_g, return_pooled=True
             )
+
             cond = torch.cat((cond_l, cond_g), dim=-1)
-
             return [[cond.clone(), {"pooled_output": pooled_g.clone()}]]
-
         else:
             tokens = clip.tokenize(text)
             cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True)
@@ -403,14 +372,16 @@ class ThoughtBubbleNode:
             if lora_filename:
                 try:
                     lora_path = folder_paths.get_full_path("loras", lora_filename)
-                    if lora_path in self.LORA_CACHE:
-                        lora = self.LORA_CACHE[lora_path]
-                    else:
-                        lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
-                        self.LORA_CACHE[lora_path] = lora
+
+                    # --- FIX: Load LoRA directly without permanent caching ---
+                    # Python's GC will free 'lora' once this function finishes and
+                    # the model patcher has extracted what it needs.
+                    lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
+
                     model_out, clip_out = comfy.sd.load_lora_for_models(
                         model_out, clip_out, lora, model_strength, clip_strength
                     )
+
                 except Exception as e:
                     print(
                         f"Thought Bubble Warning: Could not apply LoRA '{lora_filename}': {e}"
