@@ -20,20 +20,26 @@ export class BoxHandler {
         const box = this.stateManager.getBoxById(boxEl.dataset.boxId);
         if (!box) return;
 
-        // --- MERGED: Bring to Front Logic ---
-        // 1. Update Data: Move to end of array so it persists on next save/load
-        const boxIndex = this.stateManager.state.boxes.findIndex(b => b.id === box.id);
-        if (boxIndex > -1 && boxIndex < this.stateManager.state.boxes.length - 1) {
-            this.stateManager.state.boxes.splice(boxIndex, 1);
-            this.stateManager.state.boxes.push(box);
+        // --- FIX: Smart "Bring to Front" ---
+        // Only move the DOM node if it's NOT already on top.
+        // This prevents interrupting the 'dblclick' event chain for title editing.
+        if (this.worldEl.lastElementChild !== boxEl) {
+            // 1. Update Data
+            const boxIndex = this.stateManager.state.boxes.findIndex(b => b.id === box.id);
+            if (boxIndex > -1 && boxIndex < this.stateManager.state.boxes.length - 1) {
+                this.stateManager.state.boxes.splice(boxIndex, 1);
+                this.stateManager.state.boxes.push(box);
+            }
+
+            // 2. Update Visuals (Only if needed)
+            this.worldEl.appendChild(boxEl);
         }
 
-        // 2. Update Visuals: Move DOM node to end to sit on top (Z-Index)
-        // We use appendChild to move it without destroying it, which PRESERVES focus/cursor position.
-        this.worldEl.appendChild(boxEl);
-
-        // 3. Stop propagation so we don't trigger canvas panning
-        e.stopPropagation();
+        // 3. Stop propagation (unless clicking an input/button which needs focus)
+        // If we are clicking the title to edit it, we want the default behavior!
+        if (!e.target.classList.contains('thought-bubble-box-title')) {
+            e.stopPropagation();
+        }
 
         // --- Standard Handling ---
         if (e.target.classList.contains('thought-bubble-box-resize-handle')) {
@@ -43,6 +49,7 @@ export class BoxHandler {
                 this.handleHeaderButtonClick(e, box);
             } else {
                 const titleInput = boxEl.querySelector('.thought-bubble-box-title');
+                // Only start drag if we are NOT editing the title
                 if (titleInput && titleInput.readOnly) {
                     this.startDrag(e, box, boxEl);
                 }
@@ -81,7 +88,6 @@ export class BoxHandler {
 
     startResize(e, box, boxEl) {
         if (e.button !== 0) return;
-        // Prevent resizing if minimized
         if (box.displayState === 'minimized') return;
 
         this.setActiveOperation({
@@ -102,7 +108,6 @@ export class BoxHandler {
                     const dy = mouse.y - op.startMouse.y;
                     if (Math.sqrt(dx * dx + dy * dy) > 3) {
                         op.isDragging = true;
-                        // Visual Feedback: Temporarily boost z-index while dragging
                         boxEl.style.zIndex = 1000;
                     }
                 }
@@ -114,11 +119,9 @@ export class BoxHandler {
 
                     this.clearGuides();
 
-                    // 1. Smooth Drag: Always follow mouse exactly during drag
                     box.x = rawX;
                     box.y = rawY;
 
-                    // 2. Visual Feedback: Calculate potential snaps to show Green Lines
                     if (!e.shiftKey) {
                         const snap = this.calculateSnap(rawX, rawY, box.width, box.height, box.id);
                         this.drawGuides(snap.guides);
@@ -127,7 +130,6 @@ export class BoxHandler {
                     boxEl.style.left = box.x + 'px';
                     boxEl.style.top = box.y + 'px';
 
-                    // Optional: Redraw connections for smoothness
                     if (this.renderer.connectionsEl) {
                         this.renderer.drawConnections(this.stateManager.state.boxes, 0, 0);
                     }
@@ -145,7 +147,6 @@ export class BoxHandler {
                 let w = Math.max(minWidth, op.startSize.w + dx);
                 let h = Math.max(minHeight, op.startSize.h + dy);
 
-                // Snap resize immediately (users usually prefer stepped resize)
                 if (!e.shiftKey) {
                     w = this.stateManager.snapToGrid(w);
                     h = this.stateManager.snapToGrid(h);
@@ -166,29 +167,15 @@ export class BoxHandler {
         switch (op.type) {
             case 'drag':
                 if (isDragging) {
-                    // --- HYBRID SNAP LOGIC ---
                     if (!e.shiftKey) {
-                        // 1. Calculate Smart Snaps (Magnets)
                         const snap = this.calculateSnap(box.x, box.y, box.width, box.height, box.id);
+                        if (snap.snappedX) box.x = snap.x;
+                        else box.x = this.stateManager.snapToGrid(box.x);
 
-                        // 2. Decide X Axis: Smart > Grid
-                        if (snap.snappedX) {
-                            box.x = snap.x;
-                        } else {
-                            box.x = this.stateManager.snapToGrid(box.x);
-                        }
-
-                        // 3. Decide Y Axis: Smart > Grid
-                        if (snap.snappedY) {
-                            box.y = snap.y;
-                        } else {
-                            box.y = this.stateManager.snapToGrid(box.y);
-                        }
+                        if (snap.snappedY) box.y = snap.y;
+                        else box.y = this.stateManager.snapToGrid(box.y);
                     }
-
-                    boxEl.style.zIndex = ''; // Reset temp z-index
-
-                    // Render final position to ensure DOM matches state
+                    boxEl.style.zIndex = '';
                     this.stateManager.save();
                     this.renderer.render();
                 }
@@ -215,7 +202,6 @@ export class BoxHandler {
             const otherX = { left: other.x, center: other.x + other.width / 2, right: other.x + other.width };
             const otherY = { top: other.y, center: other.y + other.height / 2, bottom: other.y + other.height };
 
-            // Find best X snap
             for (const [myType, myVal] of Object.entries(myX)) {
                 for (const [otherType, otherVal] of Object.entries(otherX)) {
                     const diff = otherVal - myVal;
@@ -227,7 +213,6 @@ export class BoxHandler {
                     }
                 }
             }
-            // Find best Y snap
             for (const [myType, myVal] of Object.entries(myY)) {
                 for (const [otherType, otherVal] of Object.entries(otherY)) {
                     const diff = otherVal - myVal;
@@ -246,17 +231,9 @@ export class BoxHandler {
         let snappedX = false;
         let snappedY = false;
 
-        // Apply Snap Candidates
-        if (bestDx !== Infinity) {
-            finalX += bestDx;
-            snappedX = true;
-        }
-        if (bestDy !== Infinity) {
-            finalY += bestDy;
-            snappedY = true;
-        }
+        if (bestDx !== Infinity) { finalX += bestDx; snappedX = true; }
+        if (bestDy !== Infinity) { finalY += bestDy; snappedY = true; }
 
-        // Filter visible guides for only the applied snaps
         const activeGuides = guides.filter(g => {
             if (g.type === 'vert' && snappedX) {
                 return Math.abs(g.x - finalX) < 1 || Math.abs(g.x - (finalX + w / 2)) < 1 || Math.abs(g.x - (finalX + w)) < 1;
@@ -278,8 +255,6 @@ export class BoxHandler {
             el.style.position = 'absolute';
             el.style.zIndex = 2000;
             el.style.pointerEvents = 'none';
-
-            // Use Accent Color
             el.style.backgroundColor = 'var(--tb-accent-color)';
 
             if (g.type === 'vert') {
