@@ -22,10 +22,8 @@ export class BackgroundHandler {
     }
 
     handleWheel(e) {
-        // --- FIX: Respect scrollable elements ---
+        // --- FIX 1: Respect scrollable elements (Prevent Zoom if scrolling a list) ---
         if (this.isEventTargetScrollable(e)) {
-            // Do NOT preventDefault(); let the browser scroll the element.
-            // Do NOT zoom.
             return;
         }
 
@@ -41,26 +39,26 @@ export class BackgroundHandler {
         state.pan.y = mouse.y - mouseWorld.y * newZoom;
         state.zoom = newZoom;
 
-        this.stateManager.save();
-        this.renderer.updateView();
+        // --- FIX 2: Use DEBOUNCED save to prevent Socket Exhaustion crash ---
+        this.stateManager.saveDebounced(500);
+
+        // --- FIX 3: Use optimized updateView instead of full render ---
+        if (typeof this.renderer.updateView === 'function') {
+            this.renderer.updateView();
+        } else {
+            this.renderer.render();
+        }
     }
 
-    // --- NEW: Helper to detect if we should allow scrolling instead of zooming ---
+    // Helper to detect if we should allow scrolling instead of zooming
     isEventTargetScrollable(e) {
         let el = e.target;
-
-        // Traverse up the DOM tree from the target to the canvas root
         while (el && el !== this.renderer.canvasEl) {
-            // 1. Always scroll standard input elements
             if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') return true;
-
-            // 2. Check for generic scrollable containers (divs with overflow)
             const style = window.getComputedStyle(el);
             const isScrollableY = ['auto', 'scroll'].includes(style.overflowY) && el.scrollHeight > el.clientHeight;
             const isScrollableX = ['auto', 'scroll'].includes(style.overflowX) && el.scrollWidth > el.clientWidth;
-
             if (isScrollableY || isScrollableX) return true;
-
             el = el.parentElement;
         }
         return false;
@@ -96,7 +94,13 @@ export class BackgroundHandler {
                 const dy = mouse.y - op.startMouse.y;
                 this.stateManager.state.pan.x = op.startPan.x + dx;
                 this.stateManager.state.pan.y = op.startPan.y + dy;
-                this.renderer.updateView();
+
+                // Optimized view update
+                if (typeof this.renderer.updateView === 'function') {
+                    this.renderer.updateView();
+                } else {
+                    this.renderer.render();
+                }
                 break;
             }
             case 'drag-create': {
@@ -120,8 +124,12 @@ export class BackgroundHandler {
         this.renderer.canvasEl.style.cursor = '';
         switch (op.type) {
             case 'pan':
-                this.stateManager.save();
-                this.renderer.updateView();
+                this.stateManager.save(); // Pan is a single action, so immediate save is okay here
+                if (typeof this.renderer.updateView === 'function') {
+                    this.renderer.updateView();
+                } else {
+                    this.renderer.render();
+                }
                 break;
             case 'drag-create': {
                 op.selectionBoxEl.remove();

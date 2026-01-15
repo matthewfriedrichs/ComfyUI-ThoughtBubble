@@ -206,6 +206,29 @@ class CanvasParser:
         return children, None
 
     def _post_process(self, text):
+        # --- START FIX: Extract Lazy-Loaded LoRAs ---
+        # We look for the special tokens created by command_lora.py
+        # Only tokens that 'survived' w/if selection will be present here.
+        def extract_and_load_loras(match):
+            try:
+                # Format: ###LORA:::name:::model_strength:::clip_strength###
+                content = match.group(1)
+                parts = content.split(":::")
+                if len(parts) == 3:
+                    name, model_str, clip_str = parts
+                    self.loras_to_load.append((name, float(model_str), float(clip_str)))
+            except Exception:
+                pass
+            return ""  # Remove the tag from the final prompt
+
+        text = re.sub(
+            r"###LORA:::(.*?)###",
+            extract_and_load_loras,
+            text,
+            flags=re.DOTALL,
+        )
+        # --- END FIX ---
+
         positive_toggled_content = []
 
         def extract_and_remove_neg_toggles(match):
@@ -250,8 +273,7 @@ class CanvasParser:
             r"###NEG###.*?###/NEG###", "", toggled_text, flags=re.DOTALL
         )
 
-        # 3. NEW: Remove Hidden Blocks (###HIDDEN_START### ... ###HIDDEN_END###)
-        # We do this AFTER extracting negatives so that h(!neg) still works.
+        # 3. Remove Hidden Blocks
         text_without_hidden = re.sub(
             r"###HIDDEN_START###.*?###HIDDEN_END###",
             "",

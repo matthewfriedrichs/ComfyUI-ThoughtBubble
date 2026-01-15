@@ -14,15 +14,29 @@ export class BoxHandler {
     }
 
     handleMouseDown(e) {
-        if (e.target.closest('.thought-bubble-box') === null) return;
         const boxEl = e.target.closest('.thought-bubble-box');
         if (!boxEl) return;
 
         const box = this.stateManager.getBoxById(boxEl.dataset.boxId);
         if (!box) return;
 
+        // --- MERGED: Bring to Front Logic ---
+        // 1. Update Data: Move to end of array so it persists on next save/load
+        const boxIndex = this.stateManager.state.boxes.findIndex(b => b.id === box.id);
+        if (boxIndex > -1 && boxIndex < this.stateManager.state.boxes.length - 1) {
+            this.stateManager.state.boxes.splice(boxIndex, 1);
+            this.stateManager.state.boxes.push(box);
+        }
+
+        // 2. Update Visuals: Move DOM node to end to sit on top (Z-Index)
+        // We use appendChild to move it without destroying it, which PRESERVES focus/cursor position.
+        this.worldEl.appendChild(boxEl);
+
+        // 3. Stop propagation so we don't trigger canvas panning
+        e.stopPropagation();
+
+        // --- Standard Handling ---
         if (e.target.classList.contains('thought-bubble-box-resize-handle')) {
-            e.stopPropagation();
             this.startResize(e, box, boxEl);
         } else if (e.target.closest('.thought-bubble-box-header')) {
             if (e.target.closest('button')) {
@@ -30,7 +44,6 @@ export class BoxHandler {
             } else {
                 const titleInput = boxEl.querySelector('.thought-bubble-box-title');
                 if (titleInput && titleInput.readOnly) {
-                    e.stopPropagation();
                     this.startDrag(e, box, boxEl);
                 }
             }
@@ -68,9 +81,8 @@ export class BoxHandler {
 
     startResize(e, box, boxEl) {
         if (e.button !== 0) return;
-        // --- FIX: Prevent resizing if minimized ---
+        // Prevent resizing if minimized
         if (box.displayState === 'minimized') return;
-        // ------------------------------------------
 
         this.setActiveOperation({
             type: 'resize', handler: this, box, boxEl,
@@ -90,7 +102,8 @@ export class BoxHandler {
                     const dy = mouse.y - op.startMouse.y;
                     if (Math.sqrt(dx * dx + dy * dy) > 3) {
                         op.isDragging = true;
-                        boxEl.style.zIndex = 100; // Float above others
+                        // Visual Feedback: Temporarily boost z-index while dragging
+                        boxEl.style.zIndex = 1000;
                     }
                 }
 
@@ -173,7 +186,8 @@ export class BoxHandler {
                         }
                     }
 
-                    boxEl.style.zIndex = 1;
+                    boxEl.style.zIndex = ''; // Reset temp z-index
+
                     // Render final position to ensure DOM matches state
                     this.stateManager.save();
                     this.renderer.render();
@@ -244,8 +258,6 @@ export class BoxHandler {
 
         // Filter visible guides for only the applied snaps
         const activeGuides = guides.filter(g => {
-            const isRelevantVert = g.type === 'vert' && snappedX && Math.abs(g.x - (finalX + (g.x - (finalX + (g.x - g.x))))) < 2; // Approximate check
-            // Simpler check: does the guide align with any of our edges at the new position?
             if (g.type === 'vert' && snappedX) {
                 return Math.abs(g.x - finalX) < 1 || Math.abs(g.x - (finalX + w / 2)) < 1 || Math.abs(g.x - (finalX + w)) < 1;
             }
@@ -330,7 +342,6 @@ export class BoxHandler {
         this.renderer.render();
     }
 
-    // ... (Title handlers kept same) ...
     handleTitleDblClick(e) {
         const titleInput = e.target;
         if (!titleInput.classList.contains('thought-bubble-box-title')) return;
@@ -339,6 +350,7 @@ export class BoxHandler {
         titleInput.focus();
         titleInput.select();
     }
+
     handleTitleBlur(e) {
         const titleInput = e.target;
         if (!titleInput.classList.contains('thought-bubble-box-title')) return;
@@ -350,6 +362,7 @@ export class BoxHandler {
             this.stateManager.save();
         }
     }
+
     handleTitleKeyDown(e) {
         if (e.key === "Enter" && e.target.classList.contains('thought-bubble-box-title')) {
             e.preventDefault();

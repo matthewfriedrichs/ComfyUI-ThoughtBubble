@@ -12,6 +12,12 @@ export class StateManager {
         this.state = {};
         this.lastKnownValue = this.dataWidget.value;
         this.lastSelectedBoxType = 'text';
+
+        // --- ROBUSTNESS: Rate Limiting State ---
+        this.saveTimer = null;           // Timer for pending saves
+        this.lastSaveTimestamp = 0;      // When we last actually wrote to the widget
+        this.MIN_SAVE_INTERVAL_MS = 250; // Hard limit: Max ~4 saves per second
+
         this.load();
     }
 
@@ -25,7 +31,7 @@ export class StateManager {
             iterator: 0,
             theme: {},
             periodIsBreak: true,
-            showMinimap: false, // <-- NEW: Add minimap state
+            showMinimap: false,
         };
         try {
             const loadedState = JSON.parse(this.dataWidget.value);
@@ -34,14 +40,65 @@ export class StateManager {
             this.state = defaultState;
             console.error("Failed to parse ThoughtBubble state, resetting to default:", e);
         }
-        this.save();
+        // Initial load should be immediate
+        this.save(true);
     }
 
-    save() {
-        const replacer = (key, value) => {
-            if (key === 'instance') {
-                return undefined;
+    /**
+     * ROBUST SAVE METHOD
+     * @param {boolean} forceImmediate - If true, bypasses rate limiting (use for critical events like 'Queue Prompt')
+     */
+    save(forceImmediate = false) {
+        // 1. If forced, cancel any pending timers and commit instantly
+        if (forceImmediate) {
+            if (this.saveTimer) {
+                clearTimeout(this.saveTimer);
+                this.saveTimer = null;
             }
+            this._commitState();
+            return;
+        }
+
+        // 2. If a save is already scheduled, we don't need to do anything.
+        // The pending timer will capture the latest state when it fires.
+        if (this.saveTimer) return;
+
+        // 3. Rate Limit Check
+        const now = Date.now();
+        const timeSinceLast = now - this.lastSaveTimestamp;
+
+        if (timeSinceLast >= this.MIN_SAVE_INTERVAL_MS) {
+            // Safe to save immediately
+            this._commitState();
+        } else {
+            // Too soon! Schedule a save for the remaining cooldown time.
+            const waitTime = this.MIN_SAVE_INTERVAL_MS - timeSinceLast;
+            this.saveTimer = setTimeout(() => {
+                this.saveTimer = null;
+                this._commitState();
+            }, waitTime);
+        }
+    }
+
+    /**
+     * Helper for UX events (like "Wait until user stops zooming")
+     */
+    saveDebounced(delay = 500) {
+        if (this.saveTimer) clearTimeout(this.saveTimer);
+        this.saveTimer = setTimeout(() => {
+            this.saveTimer = null;
+            this._commitState();
+        }, delay);
+    }
+
+    /**
+     * Internal method to actually write data. Do not call directly.
+     */
+    _commitState() {
+        this.lastSaveTimestamp = Date.now();
+
+        const replacer = (key, value) => {
+            if (key === 'instance') return undefined;
             return value;
         };
 

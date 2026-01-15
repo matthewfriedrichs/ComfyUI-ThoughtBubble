@@ -45,7 +45,10 @@ app.registerExtension({
                         }
                     });
 
-                    node.stateManager.save();
+                    // --- FIX: Force immediate save during Queue Prompt ---
+                    // This ensures the backend gets the updated iterator/variables 
+                    // instantly, bypassing the safety rate-limiter.
+                    node.stateManager.save(true);
                 }
             }
             return prompt;
@@ -76,7 +79,6 @@ app.registerExtension({
         widgetContainer.className = "thought-bubble-widget-container";
         widgetContainer.dataset.nodeId = node.id;
 
-        // Stop mouse events from propagating to the main ComfyUI canvas
         widgetContainer.addEventListener('mousedown', (e) => {
             e.stopPropagation();
         });
@@ -85,9 +87,6 @@ app.registerExtension({
 
         const canvasEl = document.createElement("div"); canvasEl.className = "thought-bubble-widget";
 
-        // --- FIX: Scroll Lock ---
-        // Prevents the browser from scrolling the container when the text cursor moves off-screen.
-        // This keeps the Toolbar and Grid locked in place.
         canvasEl.addEventListener('scroll', () => {
             if (canvasEl.scrollTop !== 0 || canvasEl.scrollLeft !== 0) {
                 canvasEl.scrollTop = 0;
