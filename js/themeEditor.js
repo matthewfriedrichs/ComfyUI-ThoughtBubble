@@ -13,50 +13,66 @@ export class ThemeEditor {
         const footerButtons = this.createFooterButtons();
         this.modal.show("Theme Editor", body, footerButtons);
     }
-    
+
     createEditorBody() {
         const container = document.createElement('div');
         container.className = 'thought-bubble-theme-editor';
-        
+
         const currentTheme = this.stateManager.state.theme || {};
 
         for (const key in DEFAULT_THEME) {
             const row = document.createElement('div');
             row.className = 'theme-editor-row';
-            
+
             const label = document.createElement('label');
             label.textContent = key.replace('--tb-', '').replace(/-/g, ' ');
-            
+
             const isColor = key.toLowerCase().includes('color');
             const input = document.createElement('input');
             input.type = isColor ? 'color' : 'text';
             input.value = currentTheme[key] || DEFAULT_THEME[key];
-            
+
             const textInput = isColor ? document.createElement('input') : null;
-            if(isColor) {
+            if (isColor) {
                 textInput.type = 'text';
                 textInput.value = input.value;
                 input.addEventListener('input', () => textInput.value = input.value);
-                textInput.addEventListener('change', () => input.value = textInput.value);
+                textInput.addEventListener('change', () => {
+                    input.value = textInput.value;
+                    // Trigger the commit manually if text input changes
+                    commitUpdate(textInput.value);
+                });
             }
 
-            const liveUpdate = (e) => {
+            // --- FIX: Split 'preview' from 'save' ---
+
+            // 1. VISUAL PREVIEW: Runs on every mouse move (cheap CSS update)
+            const previewUpdate = (e) => {
+                const newVal = e.target.value;
                 if (!this.stateManager.state.theme) this.stateManager.state.theme = {};
-                this.stateManager.state.theme[key] = e.target.value;
+                this.stateManager.state.theme[key] = newVal;
                 this.themeManager.updateTheme(this.stateManager.state.theme);
-                this.stateManager.save();
+                // NO SAVE HERE
             };
 
-            input.addEventListener('input', liveUpdate);
-            if(textInput) textInput.addEventListener('change', liveUpdate);
+            // 2. DATA COMMIT: Runs only when mouse is released (expensive Save)
+            const commitUpdate = (val) => {
+                if (!this.stateManager.state.theme) this.stateManager.state.theme = {};
+                this.stateManager.state.theme[key] = val; // Ensure state is consistent
+                this.stateManager.save(); // Debounced save is fine here
+            };
+
+            // Bind Events
+            input.addEventListener('input', previewUpdate);
+            input.addEventListener('change', (e) => commitUpdate(e.target.value));
 
             row.append(label, input);
-            if(textInput) row.appendChild(textInput);
+            if (textInput) row.appendChild(textInput);
             container.appendChild(row);
         }
         return container;
     }
-    
+
     createFooterButtons() {
         const saveButton = document.createElement('button');
         saveButton.textContent = "Save Theme";
@@ -65,7 +81,7 @@ export class ThemeEditor {
         const loadButton = document.createElement('button');
         loadButton.textContent = "Load Theme";
         loadButton.onclick = () => this.handleLoadTheme();
-        
+
         const defaultButton = document.createElement('button');
         defaultButton.textContent = "Set as Default";
         defaultButton.onclick = () => this.handleSetDefault();
@@ -78,10 +94,10 @@ export class ThemeEditor {
             this.modal.close();
             this.show(); // Re-open to show reset values
         };
-        
+
         return [resetButton, loadButton, saveButton, defaultButton];
     }
-    
+
     async handleSaveTheme() {
         const filename = prompt("Enter a name for your theme (e.g., 'my-theme'). It will be saved as a .json file in your user folder.");
         if (!filename) return;
@@ -112,7 +128,7 @@ export class ThemeEditor {
 
             const userThemes = await userThemesRes.json();
             const defaultThemes = await defaultThemesRes.json();
-            
+
             const listContainer = document.createElement('div');
 
             const createItem = (file) => {
@@ -126,7 +142,7 @@ export class ThemeEditor {
                     this.themeManager.updateTheme(themeData);
                     this.stateManager.save();
                     loadModal.close();
-                    this.modal.close(); // Also close the main editor
+                    this.modal.close();
                 };
                 listContainer.appendChild(item);
             };
@@ -149,11 +165,11 @@ export class ThemeEditor {
                 listContainer.appendChild(header);
                 defaultThemes.forEach(createItem);
             }
-            
+
             if (userThemes.length === 0 && defaultThemes.length === 0) {
                 listContainer.textContent = "No themes found. Save a theme to get started!";
             }
-            
+
             loadModal.show('Load Theme', listContainer);
 
         } catch (error) {
@@ -173,7 +189,7 @@ export class ThemeEditor {
             if (!response.ok) throw new Error('Failed to set default theme.');
             alert("Current theme set as default for new nodes.");
         } catch (error) {
-             console.error("Failed to set default theme:", error);
+            console.error("Failed to set default theme:", error);
             alert(`Error: ${error.message}`);
         }
     }

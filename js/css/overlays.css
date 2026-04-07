@@ -1,0 +1,384 @@
+/* js/css/overlays.css */
+
+/* =========================================
+   1. FLOATING PANEL (New Theme Editor)
+   ========================================= */
+
+.thought-bubble-floating-panel {
+    position: fixed;
+    /* Note: Top/Left are set dynamically by JS to center the panel */
+    width: 320px;
+
+    /* Theme Variables */
+    background-color: var(--tb-box-bg-color);
+    border: 1px solid var(--tb-box-border-color);
+    border-radius: 8px;
+
+    /* Deep shadow for floating effect */
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    z-index: 5000;
+
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+
+    /* Glassmorphism */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+
+    /* Spawn Animation */
+    animation: panelSpawn 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
+@keyframes panelSpawn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.floating-panel-header {
+    background-color: var(--tb-header-bg-color);
+    color: var(--tb-header-text-color);
+    padding: 10px 15px;
+    font-weight: bold;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: move;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--tb-box-border-color);
+    user-select: none;
+}
+
+.panel-close-btn {
+    background: none;
+    border: none;
+    color: var(--tb-header-text-color);
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 4px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.panel-close-btn:hover {
+    opacity: 1;
+}
+
+.floating-panel-body {
+    padding: 10px;
+    max-height: 500px;
+    overflow-y: auto;
+    /* Subtle inner shadow/darkening */
+    background-color: rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.floating-panel-footer {
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-top: 1px solid var(--tb-box-border-color);
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.floating-panel-footer button {
+    background-color: var(--tb-button-bg-color);
+    color: var(--tb-button-text-color);
+    border: 1px solid var(--tb-box-border-color);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    flex-grow: 1;
+    transition: filter 0.2s;
+}
+
+.floating-panel-footer button:hover {
+    filter: brightness(1.2);
+}
+
+/* =========================================
+   2. THEME EDITOR GRID (High Tech UI)
+   ========================================= */
+
+.theme-editor-row {
+    display: grid;
+    align-items: center;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    transition: background-color 0.1s;
+}
+
+.theme-editor-row:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Specific Columns for Colors vs Text */
+.theme-editor-row.is-color-row {
+    grid-template-columns: 1fr 30px 70px;
+    gap: 10px;
+}
+
+.theme-editor-row.is-text-row {
+    grid-template-columns: 1fr 100px;
+    gap: 10px;
+}
+
+.theme-editor-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--tb-text-color);
+    opacity: 0.8;
+}
+
+/* Inputs (Hex and Text) */
+.theme-editor-input-hex,
+.theme-editor-input-text {
+    background-color: rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid var(--tb-box-border-color) !important;
+    color: var(--tb-accent-color) !important;
+    font-family: 'Consolas', monospace;
+    font-size: 11px;
+    text-align: center;
+    border-radius: 3px;
+    height: 22px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.theme-editor-input-hex:focus,
+.theme-editor-input-text:focus {
+    border-color: var(--tb-accent-color) !important;
+    outline: none;
+}
+
+/* Color Swatch */
+input[type="color"].theme-editor-input-color {
+    -webkit-appearance: none;
+    border: none;
+    width: 100%;
+    height: 22px;
+    cursor: pointer;
+    background: none;
+    padding: 0;
+}
+
+input[type="color"].theme-editor-input-color::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+input[type="color"].theme-editor-input-color::-webkit-color-swatch {
+    border: 1px solid var(--tb-box-border-color);
+    border-radius: 3px;
+}
+
+/* =========================================
+   3. FILE LISTS (For Load Theme)
+   ========================================= */
+
+.thought-bubble-file-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--tb-box-border-color);
+    background-color: var(--tb-textarea-bg-color);
+    border-radius: 4px;
+}
+
+.thought-bubble-file-item {
+    padding: 6px 10px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--tb-box-border-color);
+    color: var(--tb-text-color);
+    font-size: 12px;
+}
+
+.thought-bubble-file-item:last-child {
+    border-bottom: none;
+}
+
+.thought-bubble-file-item:hover {
+    background-color: var(--tb-header-bg-color);
+}
+
+.thought-bubble-theme-header {
+    font-size: 10px;
+    font-weight: bold;
+    color: var(--tb-accent-color);
+    margin-top: 10px;
+    margin-bottom: 5px;
+    padding-left: 5px;
+    border-bottom: 1px solid var(--tb-accent-color);
+    opacity: 0.9;
+    text-transform: uppercase;
+}
+
+/* =========================================
+   4. MINIMAP
+   ========================================= */
+
+.thought-bubble-minimap {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    width: 200px;
+    height: 150px;
+
+    /* Audited Variables */
+    background-color: var(--tb-bg-color);
+    border: 1px solid var(--tb-box-border-color);
+
+    z-index: 100;
+    opacity: 0.9;
+    display: none;
+    /* Toggled via JS */
+    border-radius: 4px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+
+    pointer-events: auto;
+    cursor: grab;
+}
+
+.thought-bubble-minimap:active {
+    cursor: grabbing;
+}
+
+/* =========================================
+   5. CONTEXT MENU
+   ========================================= */
+
+.thought-bubble-context-menu {
+    display: none;
+    position: absolute;
+
+    /* Audited Variables */
+    background-color: var(--tb-box-bg-color);
+    border: 1px solid var(--tb-box-border-color);
+    color: var(--tb-text-color);
+
+    border-radius: 4px;
+    min-width: 150px;
+    z-index: 2200;
+    padding: 5px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+}
+
+.thought-bubble-context-menu-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-radius: 2px;
+}
+
+.thought-bubble-context-menu-item:hover {
+    background-color: var(--tb-header-bg-color);
+}
+
+/* =========================================
+   6. AUTOCOMPLETE (LORA / EMBED)
+   ========================================= */
+
+.lora-autocomplete-dropdown {
+    position: absolute;
+
+    /* Audited Variables */
+    background-color: var(--tb-box-bg-color);
+    border: 1px solid var(--tb-box-border-color);
+    color: var(--tb-text-color);
+
+    border-radius: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 2100;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+}
+
+.lora-autocomplete-item {
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+.lora-autocomplete-item:hover,
+.lora-autocomplete-item.selected {
+    background-color: var(--tb-header-bg-color);
+}
+
+/* =========================================
+   7. LEGACY MODALS (utils.js support)
+   ========================================= */
+
+.thought-bubble-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.thought-bubble-modal-content {
+    /* Audited Variables */
+    background-color: var(--tb-box-bg-color);
+    border: 1px solid var(--tb-box-border-color);
+    color: var(--tb-text-color);
+
+    border-radius: 8px;
+    padding: 20px;
+    min-width: 400px;
+    max-width: 90%;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.thought-bubble-modal-title {
+    margin: 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--tb-box-border-color);
+    font-size: 18px;
+}
+
+.thought-bubble-modal-body input {
+    width: 100%;
+    padding: 8px;
+    /* Audited Variables */
+    background-color: var(--tb-textarea-bg-color);
+    border: 1px solid var(--tb-box-border-color);
+    color: var(--tb-text-color);
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.thought-bubble-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--tb-box-border-color);
+}
+
+.thought-bubble-modal-footer button {
+    background-color: var(--tb-button-bg-color);
+    color: var(--tb-button-text-color);
+    border: 1px solid var(--tb-box-border-color);
+    border-radius: 4px;
+    padding: 6px 12px;
+    cursor: pointer;
+}

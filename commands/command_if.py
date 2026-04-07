@@ -1,13 +1,27 @@
-import re
+# filename: thoughtbubble/commands/command_if.py
 
-def execute(parser, content, **kwargs):
-    context = kwargs.get('context', '')
-    parts = parser._split_toplevel_options(content)
-    if len(parts) < 2: return ""
-    
-    keywords = [k.strip().lower() for k in parts[0].split(',') if k.strip()]
-    true_text = parts[1]
-    false_text = parts[2] if len(parts) > 2 else ""
-    
-    condition = any(re.search(r'\b' + re.escape(k) + r'\b', context.lower()) for k in keywords)
-    return true_text if condition else false_text
+from .utils import check_condition
+
+
+def execute(parser, args, **kwargs):
+    """
+    Syntax: ?(condition|true_text|false_text)
+    """
+    if len(args) < 2:
+        return ""
+
+    # 1. Resolve condition (e.g. "fall")
+    # Pass context so wildcards/vars inside the condition resolve correctly
+    current_context = kwargs.get("context", "")
+    condition_str = args[0].execute(parser, context=current_context).strip()
+
+    # 2. Check Truth using shared logic
+    is_met = check_condition(parser, condition_str, current_context)
+
+    # 3. Execute the chosen branch
+    if is_met:
+        return args[1].execute(parser, context=current_context)
+    elif len(args) > 2:
+        return args[2].execute(parser, context=current_context)
+
+    return ""

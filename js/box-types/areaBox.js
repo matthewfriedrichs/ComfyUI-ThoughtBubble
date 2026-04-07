@@ -1,20 +1,16 @@
-// js/box-types/areaBox.js
-
 import { BaseBox } from "./baseBox.js";
 import { TextBox } from "./textBox.js";
 
 export class AreaConditioningBox extends BaseBox {
     constructor(options) {
         super(options);
-        this.data = this.boxData; // Alias for clarity
-        this.dom = {}; // To store DOM elements
-        this.clickCycle = { region: null, count: 0 }; // Tracks double-click cycles
+        this.data = this.boxData;
+        this.dom = {};
+        this.clickCycle = { region: null, count: 0 };
 
-        // Capture properties needed for the rich text editor
         this.setLastActiveTextarea = options.setLastActiveTextarea;
         this.canvasEl = options.canvasEl;
-        
-        // Initialize state for the new features
+
         if (this.data.verticalSplit === undefined) this.data.verticalSplit = 0.5;
         if (this.data.commandLinks === undefined) this.data.commandLinks = {};
     }
@@ -63,16 +59,16 @@ export class AreaConditioningBox extends BaseBox {
         this.dom.areaWidthInput = document.createElement("input");
         this.dom.areaWidthInput.type = "number";
         this.dom.areaWidthInput.onchange = (e) => this.updateState('areaWidth', parseInt(e.target.value));
-        
+
         this.dom.areaHeightInput = document.createElement("input");
         this.dom.areaHeightInput.type = "number";
         this.dom.areaHeightInput.onchange = (e) => this.updateState('areaHeight', parseInt(e.target.value));
-        
+
         this.dom.strengthInput = document.createElement("input");
         this.dom.strengthInput.type = "number";
         this.dom.strengthInput.step = "0.1";
         this.dom.strengthInput.onchange = (e) => this.updateState('strength', parseFloat(e.target.value));
-        
+
         this.dom.topToolbar.append(
             createControlGroup("Image Width:", this.dom.imageWidthInput),
             createControlGroup("Image Height:", this.dom.imageHeightInput),
@@ -88,33 +84,38 @@ export class AreaConditioningBox extends BaseBox {
         this.dom.canvasContainer = document.createElement("div"); this.dom.canvasContainer.className = "ac-canvas-container";
         this.dom.canvas = document.createElement("canvas");
         this.dom.canvasContainer.appendChild(this.dom.canvas);
-        
+
         const divider = document.createElement("div"); divider.className = "ac-divider";
         this.addDividerListeners(divider);
 
         this.dom.textareaContainer = document.createElement("div");
         this.dom.textareaContainer.className = "ac-textarea-container";
 
-        // Set initial panel sizes based on saved state
         const splitPercentage = this.data.verticalSplit * 100;
         this.dom.canvasContainer.style.flexBasis = `${splitPercentage}%`;
         this.dom.textareaContainer.style.flexBasis = `${100 - splitPercentage}%`;
 
-        // Instantiate the full-featured TextBox
         this.textBox = new TextBox({
             boxData: this.data,
             requestSave: this.requestSave,
+            requestSaveDebounced: this.requestSaveDebounced, // Pass down
             setLastActiveTextarea: this.setLastActiveTextarea,
             canvasEl: this.canvasEl
         });
         this.textBox.render(this.dom.textareaContainer);
-        
+
         this.dom.mainContent.append(this.dom.canvasContainer, divider, this.dom.textareaContainer);
 
         this.ctx = this.dom.canvas.getContext('2d');
         this.addCanvasListeners();
     }
-    
+
+    destroy() {
+        if (this.textBox && typeof this.textBox.destroy === 'function') {
+            this.textBox.destroy();
+        }
+    }
+
     addDividerListeners(divider) {
         divider.addEventListener('mousedown', (e) => {
             e.preventDefault();
@@ -126,46 +127,42 @@ export class AreaConditioningBox extends BaseBox {
                 const dx = moveE.clientX - startX;
                 let newCanvasWidth = startCanvasWidth + dx;
 
-                // --- CAPPING LOGIC ---
                 const canvasContainerHeight = this.dom.canvasContainer.offsetHeight;
                 if (this.data.imageHeight > 0 && canvasContainerHeight > 0) {
                     const imageAspectRatio = this.data.imageWidth / this.data.imageHeight;
-                    // Calculate the maximum width the canvas needs to display the image without horizontal padding.
                     const maxUsefulCanvasWidth = canvasContainerHeight * imageAspectRatio;
 
-                    // If the user tries to drag past this useful width, cap it.
                     if (newCanvasWidth > maxUsefulCanvasWidth) {
                         newCanvasWidth = maxUsefulCanvasWidth;
                     }
                 }
-                // --- END CAPPING LOGIC ---
 
                 this.data.verticalSplit = Math.max(0.1, Math.min(0.9, newCanvasWidth / totalWidth));
-                
+
                 const splitPercentage = this.data.verticalSplit * 100;
                 this.dom.canvasContainer.style.flexBasis = `${splitPercentage}%`;
                 this.dom.textareaContainer.style.flexBasis = `${100 - splitPercentage}%`;
-                this.scheduleDraw(); // Redraw canvas as its size changes
+                this.scheduleDraw();
             };
 
             const onMouseUp = () => {
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
-                this.requestSave(); // Save the new split position
+                this.requestSave();
             };
 
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
         });
     }
-    
+
     updateState(key, value) {
         this.data[key] = value;
         this.requestSave();
         this.scheduleDraw();
         this.updateInputs();
     }
-    
+
     updateInputs() {
         this.dom.imageWidthInput.value = this.data.imageWidth;
         this.dom.imageHeightInput.value = this.data.imageHeight;
@@ -177,11 +174,11 @@ export class AreaConditioningBox extends BaseBox {
     }
 
     scheduleDraw() { requestAnimationFrame(() => this.draw()); }
-    
-    draw() { 
-        this.drawCanvas(); 
+
+    draw() {
+        this.drawCanvas();
         this.adjustSplitOnResize();
-        this.drawHandles(); 
+        this.drawHandles();
     }
 
     adjustSplitOnResize() {
@@ -198,7 +195,7 @@ export class AreaConditioningBox extends BaseBox {
             if (currentCanvasWidth > maxUsefulCanvasWidth) {
                 this.data.verticalSplit = maxUsefulCanvasWidth / totalWidth;
                 this.data.verticalSplit = Math.max(0.1, Math.min(0.9, this.data.verticalSplit));
-                
+
                 const splitPercentage = this.data.verticalSplit * 100;
                 this.dom.canvasContainer.style.flexBasis = `${splitPercentage}%`;
                 this.dom.textareaContainer.style.flexBasis = `${100 - splitPercentage}%`;
@@ -213,7 +210,7 @@ export class AreaConditioningBox extends BaseBox {
 
         canvas.width = parent.clientWidth;
         canvas.height = parent.clientHeight;
-        
+
         const imgW = this.data.imageWidth, imgH = this.data.imageHeight;
         if (!imgW || !imgH) return;
 
@@ -230,7 +227,7 @@ export class AreaConditioningBox extends BaseBox {
             drawH = drawW / imageAspect;
             offsetX = 0; offsetY = (canvas.height - drawH) / 2;
         }
-        
+
         this.imageRect = { x: offsetX, y: offsetY, w: drawW, h: drawH };
         this.scale = drawW / imgW;
 
@@ -243,17 +240,17 @@ export class AreaConditioningBox extends BaseBox {
         this.ctx.textAlign = "left";
         this.ctx.textBaseline = "top";
         this.ctx.fillText(`${imgW} x ${imgH}`, offsetX + 5, offsetY + 5);
-        
+
         const isActive = this.activeDrag && this.activeDrag.isDragging;
         this.ctx.fillStyle = isActive ? "rgba(150, 200, 255, 0.7)" : "rgba(100, 150, 255, 0.5)";
-        this.ctx.strokeStyle = isActive ? "rgb(150, 200, 255)" : "rgb(100, 150, 255)"; 
+        this.ctx.strokeStyle = isActive ? "rgb(150, 200, 255)" : "rgb(100, 150, 255)";
         this.ctx.lineWidth = isActive ? 2 : 1;
-        
+
         const areaX = offsetX + this.data.areaX * this.scale;
         const areaY = offsetY + this.data.areaY * this.scale;
         const areaW = this.data.areaWidth * this.scale;
         const areaH = this.data.areaHeight * this.scale;
-        
+
         this.ctx.fillRect(areaX, areaY, areaW, areaH);
         this.ctx.strokeRect(areaX, areaY, areaW, areaH);
     }
@@ -261,20 +258,20 @@ export class AreaConditioningBox extends BaseBox {
     drawHandles() {
         this.dom.canvasContainer.querySelectorAll('.ac-resize-handle').forEach(h => h.remove());
         if (!this.imageRect) return;
-        
+
         const { x: imgX, y: imgY } = this.imageRect;
         const { areaX, areaY, areaWidth, areaHeight } = this.data;
-        
+
         const scaledX = imgX + areaX * this.scale;
         const scaledY = imgY + areaY * this.scale;
         const scaledW = areaWidth * this.scale;
         const scaledH = areaHeight * this.scale;
 
         const handlePositions = {
-            'nw': { left: scaledX, top: scaledY }, 'n':  { left: scaledX + scaledW / 2, top: scaledY },
-            'ne': { left: scaledX + scaledW, top: scaledY }, 'e':  { left: scaledX + scaledW, top: scaledY + scaledH / 2 },
-            'se': { left: scaledX + scaledW, top: scaledY + scaledH }, 's':  { left: scaledX + scaledW / 2, top: scaledY + scaledH },
-            'sw': { left: scaledX, top: scaledY + scaledH }, 'w':  { left: scaledX, top: scaledY + scaledH / 2 },
+            'nw': { left: scaledX, top: scaledY }, 'n': { left: scaledX + scaledW / 2, top: scaledY },
+            'ne': { left: scaledX + scaledW, top: scaledY }, 'e': { left: scaledX + scaledW, top: scaledY + scaledH / 2 },
+            'se': { left: scaledX + scaledW, top: scaledY + scaledH }, 's': { left: scaledX + scaledW / 2, top: scaledY + scaledH },
+            'sw': { left: scaledX, top: scaledY + scaledH }, 'w': { left: scaledX, top: scaledY + scaledH / 2 },
         };
 
         for (const [key, pos] of Object.entries(handlePositions)) {
@@ -290,25 +287,10 @@ export class AreaConditioningBox extends BaseBox {
         const DRAG_THRESHOLD = 5;
         this.activeDrag = null;
 
-        const onMouseDown = (e) => {
-            e.stopPropagation();
-            const handle = e.target.dataset.handle;
-            const mouse = this.getMousePos(e);
-            const isMove = !handle && this.isPointInArea(mouse);
-            
-            let type = null;
-            if (handle) { type = 'resize'; } 
-            else if (isMove) { type = 'move'; }
-
-            if (type) {
-                this.activeDrag = { type, handle, startX: mouse.x, startY: mouse.y, initialState: { ...this.data }, isDragging: false };
-            }
-        };
-
         const onMouseMove = (e) => {
             if (!this.activeDrag) return;
             e.stopPropagation();
-            
+
             const mouse = this.getMousePos(e);
             const dx = mouse.x - this.activeDrag.startX;
             const dy = mouse.y - this.activeDrag.startY;
@@ -347,15 +329,15 @@ export class AreaConditioningBox extends BaseBox {
                     }
                     break;
             }
-            
+
             this.data.areaX = Math.max(0, this.data.areaX);
             this.data.areaY = Math.max(0, this.data.areaY);
-            if(this.data.areaX + this.data.areaWidth > imageWidth) {
-                if(this.activeDrag.type === 'move') this.data.areaX = imageWidth - this.data.areaWidth;
+            if (this.data.areaX + this.data.areaWidth > imageWidth) {
+                if (this.activeDrag.type === 'move') this.data.areaX = imageWidth - this.data.areaWidth;
                 else this.data.areaWidth = imageWidth - this.data.areaX;
             }
-            if(this.data.areaY + this.data.areaHeight > imageHeight) {
-                if(this.activeDrag.type === 'move') this.data.areaY = imageHeight - this.data.areaHeight;
+            if (this.data.areaY + this.data.areaHeight > imageHeight) {
+                if (this.activeDrag.type === 'move') this.data.areaY = imageHeight - this.data.areaHeight;
                 else this.data.areaHeight = imageHeight - this.data.areaY;
             }
 
@@ -370,22 +352,41 @@ export class AreaConditioningBox extends BaseBox {
             if (this.activeDrag.isDragging) this.requestSave();
             this.activeDrag = null;
             this.scheduleDraw();
+
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+
+        const onMouseDown = (e) => {
+            e.stopPropagation();
+            const handle = e.target.dataset.handle;
+            const mouse = this.getMousePos(e);
+            const isMove = !handle && this.isPointInArea(mouse);
+
+            let type = null;
+            if (handle) { type = 'resize'; }
+            else if (isMove) { type = 'move'; }
+
+            if (type) {
+                this.activeDrag = { type, handle, startX: mouse.x, startY: mouse.y, initialState: { ...this.data }, isDragging: false };
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            }
         };
 
         this.dom.canvasContainer.onmousedown = onMouseDown;
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
 
         this.dom.canvas.ondblclick = (e) => {
             if (this.activeDrag && this.activeDrag.isDragging) return;
             this.handleCanvasDblClick(e);
         };
     }
-    
+
     isPointInArea(point) {
         const { areaX, areaY, areaWidth, areaHeight } = this.data;
         return point.x >= areaX && point.x <= areaX + areaWidth &&
-               point.y >= areaY && point.y <= areaY + areaHeight;
+            point.y >= areaY && point.y <= areaY + areaHeight;
     }
 
     handleCanvasDblClick(e) {
@@ -416,18 +417,18 @@ export class AreaConditioningBox extends BaseBox {
             case "middle-left":
                 this.data.areaX = 0; this.data.areaY = 0; this.data.areaWidth = Math.round(imageWidth / (cycle % 3 + 2)); this.data.areaHeight = imageHeight; break;
             case "center":
-                if (cycle === 0) { this.data.areaX = 0; this.data.areaY = 0; this.data.areaWidth = imageWidth; this.data.areaHeight = imageHeight; } 
-                else if (cycle === 1) { const d = 2; this.data.areaWidth = Math.round(imageWidth/d); this.data.areaHeight = Math.round(imageHeight/d); this.data.areaX = Math.round((imageWidth-this.data.areaWidth)/2); this.data.areaY = Math.round((imageHeight-this.data.areaHeight)/2); }
-                else { const d = (cycle % 2)+2; this.data.areaWidth = imageWidth; this.data.areaHeight = Math.round(imageHeight/d); this.data.areaX = 0; this.data.areaY = Math.round((imageHeight-this.data.areaHeight)/2); }
+                if (cycle === 0) { this.data.areaX = 0; this.data.areaY = 0; this.data.areaWidth = imageWidth; this.data.areaHeight = imageHeight; }
+                else if (cycle === 1) { const d = 2; this.data.areaWidth = Math.round(imageWidth / d); this.data.areaHeight = Math.round(imageHeight / d); this.data.areaX = Math.round((imageWidth - this.data.areaWidth) / 2); this.data.areaY = Math.round((imageHeight - this.data.areaHeight) / 2); }
+                else { const d = (cycle % 2) + 2; this.data.areaWidth = imageWidth; this.data.areaHeight = Math.round(imageHeight / d); this.data.areaX = 0; this.data.areaY = Math.round((imageHeight - this.data.areaHeight) / 2); }
                 break;
             case "middle-right":
                 this.data.areaY = 0; this.data.areaWidth = Math.round(imageWidth / (cycle % 3 + 2)); this.data.areaX = imageWidth - this.data.areaWidth; this.data.areaHeight = imageHeight; break;
             case "bottom-left":
-                this.data.areaX = 0; this.data.areaWidth = Math.round(imageWidth/(cycle%2+2)); this.data.areaHeight = Math.round(imageHeight/(cycle%2+2)); this.data.areaY = imageHeight - this.data.areaHeight; break;
+                this.data.areaX = 0; this.data.areaWidth = Math.round(imageWidth / (cycle % 2 + 2)); this.data.areaHeight = Math.round(imageHeight / (cycle % 2 + 2)); this.data.areaY = imageHeight - this.data.areaHeight; break;
             case "bottom-center":
-                this.data.areaX = 0; this.data.areaWidth = imageWidth; this.data.areaHeight = Math.round(imageHeight/(cycle%3+2)); this.data.areaY = imageHeight-this.data.areaHeight; break;
+                this.data.areaX = 0; this.data.areaWidth = imageWidth; this.data.areaHeight = Math.round(imageHeight / (cycle % 3 + 2)); this.data.areaY = imageHeight - this.data.areaHeight; break;
             case "bottom-right":
-                this.data.areaWidth = Math.round(imageWidth/(cycle%2+2)); this.data.areaHeight = Math.round(imageHeight/(cycle%2+2)); this.data.areaX = imageWidth-this.data.areaWidth; this.data.areaY = imageHeight-this.data.areaHeight; break;
+                this.data.areaWidth = Math.round(imageWidth / (cycle % 2 + 2)); this.data.areaHeight = Math.round(imageHeight / (cycle % 2 + 2)); this.data.areaX = imageWidth - this.data.areaWidth; this.data.areaY = imageHeight - this.data.areaHeight; break;
         }
 
         this.requestSave();
@@ -462,4 +463,3 @@ export class AreaConditioningBox extends BaseBox {
         };
     }
 }
-

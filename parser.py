@@ -1,227 +1,333 @@
-# filename: thoughtbubble/parser.py
-
 import re
-import os
-import random
-from collections import namedtuple
-import itertools
-import unicodedata
-
-# This single, clean import works because of the __init__.py in the commands folder
 from . import commands
 
+
+class Node:
+    def execute(self, parser, context="", visited=None):
+        raise NotImplementedError
+
+
+class TextNode(Node):
+    def __init__(self, text):
+        self.text = text
+
+    def execute(self, parser, context="", visited=None):
+        return self.text
+
+
+class CompositeNode(Node):
+    def __init__(self, children=None):
+        self.children = children or []
+
+    def execute(self, parser, context="", visited=None):
+        if visited is None:
+            visited = set()
+        results = []
+        current_context = context or ""
+        for child in self.children:
+            child_result = child.execute(
+                parser, context=current_context, visited=visited
+            )
+            results.append(child_result)
+            current_context += child_result
+        return "".join(results)
+
+
+class CommandNode(Node):
+    def __init__(self, command_name, arguments):
+        self.command_name = command_name.lower()
+        self.arguments = arguments
+
+    def execute(self, parser, context="", visited=None):
+        if visited is None:
+            visited = set()
+        handler_name = f"{self.command_name.upper()}_COMMAND"
+        handler = parser.command_handlers.get(handler_name)
+        if handler:
+            return handler(parser, self.arguments, context=context, visited=visited)
+        args_str = "|".join(
+            [
+                arg.execute(parser, context=context, visited=visited)
+                for arg in self.arguments
+            ]
+        )
+        return f"{self.command_name}({args_str})"
+
+
 class CanvasParser:
-    def __init__(self, box_map, wildcard_data, textfiles_directory, rng, iterator=0, control_vars_by_id=None, control_vars_by_name=None, command_links=None, textfile_cache=None):
+    def __init__(
+        self,
+        box_map,
+        wildcard_data,
+        textfiles_directory,
+        rng,
+        iterator=0,
+        control_vars_by_id=None,
+        control_vars_by_name=None,
+        command_links=None,
+        textfile_cache=None,
+        period_is_break=True,
+    ):
         self.box_map = {k.lower(): v for k, v in box_map.items()}
         self.wildcards = wildcard_data
-        self.textfiles_directory = textfiles_directory # Store the directory path
+        self.textfiles_directory = textfiles_directory
         self.rng = rng
         self.iterator = iterator
         self.variables = {}
-        self.control_vars_by_id = control_vars_by_id if control_vars_by_id is not None else {}
-        self.control_vars_by_name = control_vars_by_name if control_vars_by_name is not None else {}
-        self.command_links = command_links if command_links is not None else {}
-        self.replacements = []
-        self.textfile_cache = textfile_cache if textfile_cache is not None else {}
+        self.control_vars_by_id = control_vars_by_id or {}
+        self.control_vars_by_name = control_vars_by_name or {}
+        self.period_is_break = period_is_break
+        self.loras_to_load = []
+        self.areas_to_apply = []
+        self.scheduled_prompts = []
 
-        self.COMMAND_PRIORITY = [
-            'HIDDEN_COMMAND', 'V_COMMAND', 'O_COMMAND', 'C_COMMAND', 'I_COMMAND', 'WILDCARD_COMMAND', 
-            'RANDOM_COMMAND', 'NEG_COMMAND', 
-            'LORA_COMMAND', 'AREA_COMMAND', 'FORCE_COMMAND',
-            'IF_COMMAND', 'MULTI_IF_COMMAND', 
-        ]
-
-        # The handler dictionary is now built from the imported commands package.
         self.command_handlers = {
-            'AREA_COMMAND': commands.command_area.execute,
-            'C_COMMAND': commands.command_c.execute,
-            'FORCE_COMMAND': commands.command_force.execute,
-            'HIDDEN_COMMAND': commands.command_h.execute,
-            'I_COMMAND': commands.command_i.execute,
-            'IF_COMMAND': commands.command_if.execute,
-            'LORA_COMMAND': commands.command_lora.execute,
-            'MULTI_IF_COMMAND': commands.command_multi_if.execute,
-            'NEG_COMMAND': commands.command_neg.execute,
-            'O_COMMAND': commands.command_o.execute, # Add the new handler
-            'RANDOM_COMMAND': commands.command_r.execute,
-            'V_COMMAND': commands.command_v.execute,
-            'WILDCARD_COMMAND': commands.command_w.execute,
+            "A_COMMAND": commands.command_area.execute,
+            "EQ_COMMAND": commands.command_eq.execute,
+            "H_COMMAND": commands.command_h.execute,
+            "I_COMMAND": commands.command_i.execute,
+            "IF_COMMAND": commands.command_if.execute,
+            "LORA_COMMAND": commands.command_lora.execute,
+            "LRA_COMMAND": commands.command_lora.execute,
+            "EMBED_COMMAND": commands.command_embed.execute,
+            "MULTI_IF_COMMAND": commands.command_multi_if.execute,
+            "NEG_COMMAND": commands.command_neg.execute,
+            "O_COMMAND": commands.command_o.execute,
+            "R_COMMAND": commands.command_r.execute,
+            "T_COMMAND": commands.command_t.execute,
+            "V_COMMAND": commands.command_v.execute,
+            "W_COMMAND": commands.command_w.execute,
         }
-    
-    def _parse_command(self, kind, value, **kwargs):
-        handler = self.command_handlers.get(kind)
-        if handler:
-            return handler(self, value, **kwargs)
-        return ""
 
-    # --- Utility and Finalization Methods ---
-    def _levenshtein_distance(self, s1, s2):
-        if len(s1) < len(s2): return self._levenshtein_distance(s2, s1)
-        if len(s2) == 0: return len(s1)
-        previous_row = range(len(s2) + 1)
-        for i, c1 in enumerate(s1):
-            current_row = [i + 1]
-            for j, c2 in enumerate(s2):
-                insertions, deletions = previous_row[j + 1] + 1, current_row[j] + 1
-                substitutions = previous_row[j] + (c1 != c2)
-                current_row.append(min(insertions, deletions, substitutions))
-            previous_row = current_row
-        return previous_row[-1]
+        self.syntax_map = {
+            "a": "A_COMMAND",
+            "area": "A_COMMAND",
+            "eq": "EQ_COMMAND",
+            "=": "EQ_COMMAND",
+            "h": "H_COMMAND",
+            "i": "I_COMMAND",
+            "if": "IF_COMMAND",
+            "?": "IF_COMMAND",
+            "lora": "LORA_COMMAND",
+            "lra": "LORA_COMMAND",
+            "embed": "EMBED_COMMAND",
+            "multi_if": "MULTI_IF_COMMAND",
+            "??": "MULTI_IF_COMMAND",
+            "neg": "NEG_COMMAND",
+            "-": "NEG_COMMAND",
+            "o": "O_COMMAND",
+            "r": "R_COMMAND",
+            "t": "T_COMMAND",
+            "v": "V_COMMAND",
+            "w": "W_COMMAND",
+        }
 
-    def _find_matching_paren(self, text, start_index):
-        depth = 1
-        for i in range(start_index + 1, len(text)):
-            if text[i] == '(': depth += 1
-            elif text[i] == ')': depth -= 1
-            if depth == 0: return i
-        return -1
-
-    def _split_toplevel_options(self, text, delimiter='|'):
-        parts, balance, last_split = [], 0, 0
-        for i, char in enumerate(text):
-            if char == '(': balance += 1
-            elif char == ')': balance -= 1
-            elif char == delimiter and balance == 0:
-                parts.append(text[last_split:i])
-                last_split = i + 1
-        parts.append(text[last_split:])
-        return parts
-
-    def _get_list_from_content(self, content):
-        options = self._split_toplevel_options(content)
-        wildcard_name = options[0].strip().lower()
-        if len(options) == 1 and wildcard_name in self.wildcards:
-            return self.wildcards[wildcard_name]
-        return options
-
-    def _expand_template_dimension(self, template_string):
-        parts, sub_lists, cursor = [], [], 0
-        command_regex = re.compile(r'\b[iw]\s*\(|\(')
-        while cursor < len(template_string):
-            match = command_regex.search(template_string, cursor)
-            if not match: parts.append(template_string[cursor:]); break
-            paren_start = template_string.find('(', match.start())
-            paren_end = self._find_matching_paren(template_string, paren_start)
-            if paren_end == -1: parts.append(template_string[cursor:]); break
-            parts.append(template_string[cursor:match.start()])
-            sub_lists.append(self._get_list_from_content(template_string[paren_start + 1:paren_end]))
-            parts.append(None)
-            cursor = paren_end + 1
-        if not sub_lists: return [template_string]
-        final_list = []
-        for combo in itertools.product(*sub_lists):
-            result_str = "".join(list(combo).pop(0) if p is None else p for p in parts)
-            final_list.append(self._recursive_resolve(result_str))
-        return final_list
-
-    def _recursive_resolve(self, text):
-        while True:
-            searches = {
-                'I_COMMAND': list(re.finditer(r'\b[iI](\d*)\s*\(', text)),
-                'V_COMMAND': list(re.finditer(r'\b[vV](\d*)\s*\(', text)),
-                'O_COMMAND': list(re.finditer(r'\b[oO](\d*)\s*\(', text)), # Add the new regex
-                'C_COMMAND': list(re.finditer(r'\b[cC](\d*)\s*\(', text)),
-                'NEG_COMMAND': list(re.finditer(r'-(\d*)\s*\(', text)),
-                'IF_COMMAND': list(re.finditer(r'\?(\d*)\s*\(', text)),
-                'MULTI_IF_COMMAND': list(re.finditer(r'\?\?(\d*)\s*\(', text)),
-                'HIDDEN_COMMAND': list(re.finditer(r'\b[hH](\d*)\s*\(', text)),
-                'FORCE_COMMAND': list(re.finditer(r'\b[fF](\d*)\s*\(', text)),
-                'LORA_COMMAND': list(re.finditer(r'\b(lora|lra)(\d*)\s*\(', text, re.IGNORECASE)),
-                'WILDCARD_COMMAND': list(re.finditer(r'\b[wW](\d*)\s*\(', text)),
-                'RANDOM_COMMAND': list(re.finditer(r'\b[rR](\d*)\s*\(', text)),
-                'AREA_COMMAND': list(re.finditer(r'\b[aA](\d*)\s*\(', text)),
-            }
-            innermost_command, max_depth = None, -1
-            all_matches = [m for k in self.COMMAND_PRIORITY for m in searches.get(k, [])]
-            for match in all_matches:
-                depth = text[:match.start()].count('(') - text[:match.start()].count(')')
-                if depth > max_depth: max_depth, innermost_command = depth, match
-            
-            if innermost_command is None: break
-
-            kind = next(k for k, v in searches.items() if innermost_command in v)
-            
-            command_id = innermost_command.groups()[-1]
-
-            paren_start = text.find('(', innermost_command.start())
-            
-            content_end, full_command_end = -1, -1
-
-            if command_id:
-                terminator = f"){command_id}"
-                safe_end_pos = text.rfind(terminator, paren_start + 1)
-                if safe_end_pos != -1:
-                    content_end, full_command_end = safe_end_pos, safe_end_pos + len(terminator)
-            
-            if content_end == -1:
-                content_end = self._find_matching_paren(text, paren_start)
-                if content_end != -1:
-                    full_command_end = content_end + 1
-
-            if full_command_end == -1: break 
-
-            content = self._recursive_resolve(text[paren_start + 1:content_end])
-            kwargs = {'start_index': innermost_command.start()}
-            if kind in ['IF_COMMAND', 'MULTI_IF_COMMAND']: 
-                kwargs['context'] = text[:innermost_command.start()]
-            
-            result = self._parse_command(kind, content, **kwargs)
-            text = text[:innermost_command.start()] + result + text[full_command_end:]
-
-        return text
+        sorted_keys = sorted(self.syntax_map.keys(), key=len, reverse=True)
+        escaped_keys = [re.escape(k) for k in sorted_keys]
+        cmd_pattern = "|".join([f"{k}\(" for k in escaped_keys])
+        self.token_pattern = re.compile(f"({cmd_pattern})|(\|)|(\))|(\()")
 
     def parse(self, text):
-        self.variables, self.loras_to_load, self.areas_to_apply, self.replacements = {}, [], [], []
-        
-        resolved_text = self._recursive_resolve(text)
+        self.variables = {}
+        self.loras_to_load = []
+        self.areas_to_apply = []
+        self.scheduled_prompts = []
+        # Start with an empty visited set to track recursion
+        return self.parse_fragment(text, is_root=True, visited=set())
 
-        # The replacement loop now handles the new conditional format.
-        for item in self.replacements:
-            # Unpack the item, supporting both old and new formats.
-            if len(item) == 3:
-                fuzzy_words, replace_text, condition_words = item
-            else: # Support for the old f(word|replacement) syntax
-                fuzzy_words, replace_text = item
-                condition_words = []
+    def parse_fragment(self, text, is_root=False, context="", visited=None):
+        if visited is None:
+            visited = set()
 
-            # Check if all conditions are met in the current state of the prompt.
-            if condition_words:
-                all_conditions_met = all(
-                    re.search(r'\b' + re.escape(cond.lower()) + r'\b', resolved_text.lower()) 
-                    for cond in condition_words
-                )
-                if not all_conditions_met:
-                    continue # Skip this replacement if conditions are not met.
+        tokens = self._tokenize(text)
+        root_children, _ = self._build_tree(tokens, terminators=[])
+        root = CompositeNode(root_children)
+        resolved_text = root.execute(self, context=context, visited=visited)
+        if is_root:
+            return self._post_process(resolved_text)
+        return resolved_text
 
-            # If conditions are met (or there are none), proceed with the replacement.
-            text_words, new_text_words, i = resolved_text.split(), [], 0
-            while i < len(text_words):
-                is_match = False
-                if i + len(fuzzy_words) <= len(text_words):
-                    is_match = True
-                    for j in range(len(fuzzy_words)):
-                        word_to_check = re.sub(r'[^a-zA-Z]', '', text_words[i+j])
-                        find_word, threshold = fuzzy_words[j]
-                        if not word_to_check and not find_word: continue
-                        max_len = max(len(word_to_check), len(find_word))
-                        distance = self._levenshtein_distance(word_to_check, find_word)
-                        similarity = (1 - distance / max_len) * 100 if max_len > 0 else 100
-                        if similarity < threshold: is_match = False; break
-                if is_match:
-                    new_text_words.append(replace_text)
-                    i += len(fuzzy_words)
+    def _tokenize(self, text):
+        result = []
+        last_pos = 0
+        for match in self.token_pattern.finditer(text):
+            if match.start() > last_pos:
+                result.append(text[last_pos : match.start()])
+            result.append(match.group())
+            last_pos = match.end()
+        if last_pos < len(text):
+            result.append(text[last_pos:])
+        return result
+
+    def _build_tree(self, token_stream, terminators):
+        children = []
+        current_text_buffer = []
+        paren_depth = 0
+
+        def flush_text():
+            if current_text_buffer:
+                children.append(TextNode("".join(current_text_buffer)))
+                current_text_buffer.clear()
+
+        while token_stream:
+            token = token_stream.pop(0)
+
+            if token == "(":
+                paren_depth += 1
+                current_text_buffer.append(token)
+            elif token == ")":
+                if paren_depth > 0:
+                    paren_depth -= 1
+                    current_text_buffer.append(token)
+                elif ")" in terminators:
+                    flush_text()
+                    return children, "CLOSE_PAREN"
                 else:
-                    new_text_words.append(text_words[i])
-                    i += 1
-            resolved_text = " ".join(new_text_words)
-            
-        negative_parts = re.findall(r'###NEG###(.*?)###/NEG###', resolved_text, re.DOTALL)
-        negative_prompt = ", ".join(p.strip() for p in negative_parts if p.strip())
-        positive_prompt = re.sub(r'###NEG###.*?###/NEG###', '', resolved_text)
-        
-        # This new line strips out the hidden tags and their content before final formatting.
-        positive_prompt = re.sub(r'###HIDDEN_START###.*?###HIDDEN_END###', '', positive_prompt)
-        
-        positive_prompt = ", ".join(filter(None, [p.strip() for p in re.sub(r'\s+', ' ', positive_prompt).strip().split(',')]))
-        return positive_prompt, negative_prompt
+                    current_text_buffer.append(token)
+            elif token == "|":
+                if paren_depth > 0:
+                    current_text_buffer.append(token)
+                elif "|" in terminators:
+                    flush_text()
+                    return children, "SEPARATOR"
+                else:
+                    current_text_buffer.append(token)
+            elif token.endswith("(") and len(token) > 1:
+                flush_text()
+                raw_syntax = token[:-1]
+                cmd_key = self.syntax_map.get(raw_syntax)
+                normalized_name = cmd_key.replace("_COMMAND", "").lower()
 
+                arguments = []
+                while True:
+                    arg_children, reason = self._build_tree(
+                        token_stream, terminators=["|", ")"]
+                    )
+                    arguments.append(CompositeNode(arg_children))
+                    if reason == "CLOSE_PAREN":
+                        break
+                    elif reason is None:
+                        break
+
+                children.append(CommandNode(normalized_name, arguments))
+            else:
+                current_text_buffer.append(token)
+
+        flush_text()
+        return children, None
+
+    def _post_process(self, text):
+        def extract_and_load_loras(match):
+            try:
+                content = match.group(1)
+                parts = content.split(":::")
+                if len(parts) == 3:
+                    name, model_str, clip_str = parts
+                    self.loras_to_load.append((name, float(model_str), float(clip_str)))
+            except Exception:
+                pass
+            return ""
+
+        text = re.sub(
+            r"###LORA:::(.*?)###",
+            extract_and_load_loras,
+            text,
+            flags=re.DOTALL,
+        )
+
+        positive_toggled_content = []
+
+        def extract_and_remove_neg_toggles(match):
+            neg_content = match.group(1)
+
+            def process_toggle(toggle_match):
+                toggled_word = toggle_match.group(1)
+                positive_toggled_content.append(toggled_word.replace("_", " "))
+                return ""
+
+            new_neg_content = re.sub(
+                r"!\s*([a-zA-Z0-9_]+)", process_toggle, neg_content
+            )
+            return f"###NEG###{new_neg_content}###/NEG###"
+
+        toggled_text = re.sub(
+            r"###NEG###(.*?)###/NEG###",
+            extract_and_remove_neg_toggles,
+            text,
+            flags=re.DOTALL,
+        )
+
+        def handle_pos_to_neg_toggle(match):
+            toggled_word = match.group(1)
+            processed_word = toggled_word.replace("_", " ")
+            return f"###NEG###{processed_word}###/NEG###"
+
+        toggled_text = re.sub(
+            r"!\s*([a-zA-Z0-9_]+)", handle_pos_to_neg_toggle, toggled_text
+        )
+
+        negative_prompt_raw_parts = re.findall(
+            r"###NEG###(.*?)###/NEG###", toggled_text, re.DOTALL
+        )
+        negative_prompt = " ".join(
+            part.strip() for part in negative_prompt_raw_parts if part.strip()
+        )
+
+        text_without_neg = re.sub(
+            r"###NEG###.*?###/NEG###", "", toggled_text, flags=re.DOTALL
+        )
+
+        text_without_hidden = re.sub(
+            r"###HIDDEN_START###.*?###HIDDEN_END###",
+            "",
+            text_without_neg,
+            flags=re.DOTALL,
+        ).strip()
+
+        base_positive_text = text_without_hidden
+        full_positive_text = (
+            base_positive_text + " " + " ".join(positive_toggled_content)
+        )
+
+        break_tagged_positive_prompt = full_positive_text
+        if self.period_is_break:
+
+            def protect_decimal(match):
+                return match.group(0).replace(".", "###DECIMAL_PROTECT###", 1)
+
+            break_tagged_positive_prompt = re.sub(
+                r"\d\.\d", protect_decimal, full_positive_text
+            )
+            break_tagged_positive_prompt = break_tagged_positive_prompt.replace(
+                ".", " ###PERIOD_BREAK_TAG### "
+            )
+            break_tagged_positive_prompt = break_tagged_positive_prompt.replace(
+                "###DECIMAL_PROTECT###", "."
+            )
+
+        positive_prompt = ", ".join(
+            filter(
+                None,
+                [
+                    p.strip()
+                    for p in re.sub(r"\s+", " ", break_tagged_positive_prompt)
+                    .strip()
+                    .split(",")
+                ],
+            )
+        )
+        if self.period_is_break:
+            positive_prompt = positive_prompt.replace(
+                "###PERIOD_BREAK_TAG###", " BREAK "
+            )
+
+        negative_prompt = ", ".join(
+            filter(
+                None,
+                [
+                    p.strip()
+                    for p in re.sub(r"\s+", " ", negative_prompt).strip().split(",")
+                ],
+            )
+        )
+        return positive_prompt, negative_prompt

@@ -1,0 +1,74 @@
+/* css/toolbar.css */
+
+.thought-bubble-toolbar {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    width: calc(100% - 20px);
+    height: 36px;
+
+    background-color: var(--tb-toolbar-bg-color);
+    background: rgba(var(--tb-toolbar-bg-color-rgb), 0.7);
+
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+
+    border-radius: 8px;
+    border: 1px solid var(--tb-box-border-color);
+    z-index: 10;
+    padding: 0 10px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.thought-bubble-toolbar button,
+.thought-bubble-toolbar select {
+    padding: 6px 12px;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--tb-button-text-color);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.thought-bubble-toolbar button:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.thought-bubble-toolbar label {
+    color: var(--tb-text-color);
+    font-size: 12px;
+}
+
+/* --- Styled Select Dropdown --- */
+.thought-bubble-toolbar select {
+    background-color: var(--tb-button-bg-color);
+    /* Theme BG */
+    color: var(--tb-button-text-color);
+    /* Theme Text */
+    border: 1px solid var(--tb-box-border-color);
+    /* Theme Border */
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-family: inherit;
+    outline: none;
+
+    /* Remove default arrow in some browsers for custom styling (optional) */
+    /* -webkit-appearance: none; */
+    /* appearance: none; */
+}
+
+.thought-bubble-toolbar select:hover {
+    filter: brightness(1.2);
+    border-color: var(--tb-accent-color);
+}
+
+.thought-bubble-toolbar select option {
+    background-color: var(--tb-box-bg-color);
+    /* Use solid box color for dropdown items */
+    color: var(--tb-text-color);
+}

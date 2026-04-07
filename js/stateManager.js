@@ -12,6 +12,12 @@ export class StateManager {
         this.state = {};
         this.lastKnownValue = this.dataWidget.value;
         this.lastSelectedBoxType = 'text';
+
+        // --- ROBUSTNESS: Rate Limiting State ---
+        this.saveTimer = null;           // Timer for pending saves
+        this.lastSaveTimestamp = 0;      // When we last actually wrote to the widget
+        this.MIN_SAVE_INTERVAL_MS = 250; // Hard limit: Max ~4 saves per second
+
         this.load();
     }
 
@@ -24,6 +30,8 @@ export class StateManager {
             pan: { x: 0, y: 0 }, zoom: 1.0, gridSize: 100, showGrid: true, savedView: null,
             iterator: 0,
             theme: {},
+            periodIsBreak: true,
+            showMinimap: false,
         };
         try {
             const loadedState = JSON.parse(this.dataWidget.value);
@@ -32,26 +40,77 @@ export class StateManager {
             this.state = defaultState;
             console.error("Failed to parse ThoughtBubble state, resetting to default:", e);
         }
-        this.save();
+        // Initial load should be immediate
+        this.save(true);
     }
 
-    save() {
-        const replacer = (key, value) => {
-            if (key === 'instance') {
-                return undefined;
+    /**
+     * ROBUST SAVE METHOD
+     * @param {boolean} forceImmediate - If true, bypasses rate limiting (use for critical events like 'Queue Prompt')
+     */
+    save(forceImmediate = false) {
+        // 1. If forced, cancel any pending timers and commit instantly
+        if (forceImmediate) {
+            if (this.saveTimer) {
+                clearTimeout(this.saveTimer);
+                this.saveTimer = null;
             }
+            this._commitState();
+            return;
+        }
+
+        // 2. If a save is already scheduled, we don't need to do anything.
+        // The pending timer will capture the latest state when it fires.
+        if (this.saveTimer) return;
+
+        // 3. Rate Limit Check
+        const now = Date.now();
+        const timeSinceLast = now - this.lastSaveTimestamp;
+
+        if (timeSinceLast >= this.MIN_SAVE_INTERVAL_MS) {
+            // Safe to save immediately
+            this._commitState();
+        } else {
+            // Too soon! Schedule a save for the remaining cooldown time.
+            const waitTime = this.MIN_SAVE_INTERVAL_MS - timeSinceLast;
+            this.saveTimer = setTimeout(() => {
+                this.saveTimer = null;
+                this._commitState();
+            }, waitTime);
+        }
+    }
+
+    /**
+     * Helper for UX events (like "Wait until user stops zooming")
+     */
+    saveDebounced(delay = 500) {
+        if (this.saveTimer) clearTimeout(this.saveTimer);
+        this.saveTimer = setTimeout(() => {
+            this.saveTimer = null;
+            this._commitState();
+        }, delay);
+    }
+
+    /**
+     * Internal method to actually write data. Do not call directly.
+     */
+    _commitState() {
+        this.lastSaveTimestamp = Date.now();
+
+        const replacer = (key, value) => {
+            if (key === 'instance') return undefined;
             return value;
         };
-        
+
         const newValue = JSON.stringify(this.state, replacer);
         this.dataWidget.value = newValue;
         this.lastKnownValue = newValue;
     }
-    
+
     getBoxById(boxId) {
         return this.state.boxes.find(b => b.id === boxId);
     }
-    
+
     snapToGrid(value) {
         if (!this.state || this.state.gridSize === 0) return value;
         return Math.round(value / this.state.gridSize) * this.state.gridSize;
@@ -65,14 +124,14 @@ export class StateManager {
         const h = this.snapToGrid(height || 200);
         const x = this.snapToGrid(worldX);
         const y = this.snapToGrid(worldY);
-        
+
         let newBoxState = BoxClass.createDefaultState(x, y, w, h);
-        
+
         const newBox = { id: uuidv4(), ...newBoxState, displayState: "normal" };
         this.state.boxes.push(newBox);
         this.save();
     }
-    
+
     deleteBox(boxId) {
         const box = this.state.boxes.find(b => b.id === boxId);
         if (box && box.displayState === 'maximized' && this.state.savedView) {
@@ -81,9 +140,9 @@ export class StateManager {
         this.state.boxes = this.state.boxes.filter(b => b.id !== boxId);
         this.save();
     }
-    
+
     unmaximize(box) {
-        if (box.old) { 
+        if (box.old) {
             Object.assign(box, { x: box.old.x, y: box.old.y, width: box.old.width, height: box.old.height });
             delete box.old;
         }

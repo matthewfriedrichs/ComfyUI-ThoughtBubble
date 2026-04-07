@@ -1,0 +1,80 @@
+/* css/syntax.css */
+
+.thought-bubble-paren-match {
+    position: absolute;
+    pointer-events: none;
+    z-index: 100;
+    background-color: transparent;
+    border: none;
+    outline: none;
+    font-weight: 900;
+    margin: 0;
+    padding: 0;
+    transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    opacity: 1;
+}
+
+/* Rainbow Levels */
+.tb-paren-level-0 {
+    color: #50fa7b;
+}
+
+.tb-paren-level-1 {
+    color: #8be9fd;
+}
+
+.tb-paren-level-2 {
+    color: #ff79c6;
+}
+
+.tb-paren-level-3 {
+    color: #bd93f9;
+}
+
+.tb-paren-error {
+    color: #ff5555;
+    transform: scale(1.2);
+}
+
+/* Animations */
+@keyframes errorPulse {
+    0% {
+        background-color: var(--tb-box-bg);
+    }
+
+    50% {
+        background-color: rgba(255, 85, 85, 0.25);
+    }
+
+    100% {
+        background-color: var(--tb-box-bg);
+    }
+}
+
+.thought-bubble-input-error {
+    animation: errorPulse 1s infinite;
+}
+
+.tb-paren-active {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.tb-paren-fading-out {
+    opacity: 0;
+    transform: scale(1.0);
+}
+
+@keyframes flashError {
+    0% {
+        background-color: rgba(255, 0, 0, 0.3);
+    }
+
+    100% {
+        background-color: var(--tb-box-bg);
+    }
+}
+
+.thought-bubble-flash-error {
+    animation: flashError 0.3s ease-out;
+}

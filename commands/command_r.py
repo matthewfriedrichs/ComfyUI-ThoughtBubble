@@ -1,23 +1,27 @@
-def execute(parser, content, **kwargs):
-    parts = content.split('|')
+# filename: thoughtbubble/commands/command_r.py
+
+def execute(parser, args, **kwargs):
+    if not args: return ""
+    context = kwargs.get('context', '')
+    
+    resolved_parts = [arg.execute(parser, context=context).strip() for arg in args]
+    
     try:
-        if len(parts) == 1:
-            max_val = float(parts[0]) if '.' in parts[0] else int(parts[0])
+        min_val, max_val = 0, 100
+        if len(resolved_parts) == 1:
+            val = resolved_parts[0]
+            max_val = float(val) if '.' in val else int(val)
             min_val = 0.0 if isinstance(max_val, float) else 0
-        elif len(parts) == 2:
-            min_val = float(parts[0]) if '.' in parts[0] else int(parts[0])
-            max_val = float(parts[1]) if '.' in parts[1] else int(parts[1])
+        elif len(resolved_parts) >= 2:
+            val1, val2 = resolved_parts[0], resolved_parts[1]
+            min_val = float(val1) if '.' in val1 else int(val1)
+            max_val = float(val2) if '.' in val2 else int(val2)
         
         if min_val > max_val: min_val, max_val = max_val, min_val
         
-        # Check if either of the bounds is a float. If so, we'll generate a float.
         if isinstance(min_val, float) or isinstance(max_val, float):
-            # Generate a random float between the two bounds.
-            random_float = parser.rng.uniform(float(min_val), float(max_val))
-            # Round the result to one decimal place and return it as a string.
-            return str(round(random_float, 1))
+            return str(round(parser.rng.uniform(float(min_val), float(max_val)), 2))
         else:
-            # If both bounds are integers, generate and return a random integer.
             return str(parser.rng.randint(min_val, max_val))
     except (ValueError, IndexError):
-        return f"r({content})"
+        return ""

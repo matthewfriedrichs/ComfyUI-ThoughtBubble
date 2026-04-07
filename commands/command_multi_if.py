@@ -1,13 +1,33 @@
-import re
+# filename: thoughtbubble/commands/command_multi_if.py
 
-def execute(parser, content, **kwargs):
-    context = kwargs.get('context', '')
-    sections = parser._split_toplevel_options(content)
-    for section in sections:
-        parts = section.split(':', 1)
-        if len(parts) != 2: continue
-        
-        keywords = [k.strip().lower() for k in parts[0].split(',') if k.strip()]
-        if any(re.search(r'\b' + re.escape(k) + r'\b', context.lower()) for k in keywords):
-            return parts[1]
+from .utils import check_condition
+
+
+def execute(parser, args, **kwargs):
+    """
+    Syntax: ??(cond1|val1|cond2|val2|default)
+    """
+    if not args:
+        return ""
+
+    current_context = kwargs.get("context", "")
+
+    # Single arg = Default return (Pass-through)
+    if len(args) == 1:
+        return args[0].execute(parser, context=current_context)
+
+    # Iterate pairs
+    for i in range(0, len(args) - 1, 2):
+        condition_node = args[i]
+        result_node = args[i + 1]
+
+        cond_str = condition_node.execute(parser, context=current_context).strip()
+
+        if check_condition(parser, cond_str, current_context):
+            return result_node.execute(parser, context=current_context)
+
+    # Default (if odd number of args)
+    if len(args) % 2 != 0:
+        return args[-1].execute(parser, context=current_context)
+
     return ""

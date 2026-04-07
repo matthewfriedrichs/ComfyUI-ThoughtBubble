@@ -1,25 +1,56 @@
-// js/canvasRenderer.js
-
 import { boxTypeRegistry, TOOLBAR_HEIGHT } from "./utils.js";
 
 export class CanvasRenderer {
-    constructor(canvasEl, worldEl, gridEl, contextMenu, stateManager) {
+    constructor(canvasEl, worldEl, gridEl, contextMenu, stateManager, minimapEl) {
         this.canvasEl = canvasEl;
         this.worldEl = worldEl;
         this.gridEl = gridEl;
         this.contextMenu = contextMenu;
         this.stateManager = stateManager;
-        this.lastActiveTextarea = null;
+
+        this.lastActiveBoxInfo = null;
+
+        this.minimapEl = minimapEl;
+        if (this.minimapEl) {
+            this.minimapCtx = this.minimapEl.getContext("2d");
+        } else {
+            console.warn("ThoughtBubble: Minimap element not provided to renderer.");
+        }
+        this.minimapPadding = 10;
+    }
+
+    updateView() {
+        const state = this.stateManager.state;
+        if (!state) return;
+
+        this.worldEl.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
+
+        this.drawGrid();
+
+        if (state.showMinimap && this.minimapCtx) {
+            if (this.minimapEl) this.minimapEl.style.display = 'block';
+            this.drawMinimap();
+        } else if (this.minimapEl) {
+            this.minimapEl.style.display = 'none';
+        }
     }
 
     render() {
         const state = this.stateManager.state;
         if (!state) return;
 
+        if (state.boxes) {
+            for (const box of state.boxes) {
+                if (box.instance && typeof box.instance.destroy === 'function') {
+                    box.instance.destroy();
+                }
+                box.instance = null;
+            }
+        }
+
         this.worldEl.innerHTML = "";
-        this.worldEl.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
-        
-        this.drawGrid();
+
+        this.updateView();
 
         for (const box of state.boxes) {
             this.drawBox(box);
@@ -56,7 +87,7 @@ export class CanvasRenderer {
 
         const header = this.createBoxHeader(box);
         const content = this.createBoxContent(box);
-        
+
         boxEl.append(header, content);
 
         if (displayState === "normal") {
@@ -64,14 +95,14 @@ export class CanvasRenderer {
             resizeHandle.className = "thought-bubble-box-resize-handle";
             boxEl.appendChild(resizeHandle);
         }
-        
+
         this.worldEl.appendChild(boxEl);
     }
 
     createBoxHeader(box) {
         const header = document.createElement("div");
         header.className = "thought-bubble-box-header";
-        
+
         const titleInput = document.createElement("input");
         titleInput.type = "text";
         titleInput.className = "thought-bubble-box-title";
@@ -84,7 +115,7 @@ export class CanvasRenderer {
         const maxButton = document.createElement("button"); maxButton.title = "Maximize"; maxButton.textContent = "🗖";
         const closeButton = document.createElement("button"); closeButton.title = "Close"; closeButton.textContent = "✕";
         controls.append(minButton, maxButton, closeButton);
-        
+
         header.append(titleInput, controls);
         return header;
     }
@@ -97,14 +128,14 @@ export class CanvasRenderer {
                 boxData: box,
                 fullState: this.stateManager.state,
                 requestSave: () => this.stateManager.save(),
-                setLastActiveTextarea: (textarea) => { this.lastActiveTextarea = textarea; },
+                requestSaveDebounced: (delay) => this.stateManager.saveDebounced(delay),
+                setLastActiveTextarea: (textarea) => {
+                    this.lastActiveBoxInfo = { box: box, textarea: textarea };
+                },
                 canvasEl: this.canvasEl
             });
 
-            // --- FIX: Store a reference to the class instance on the box data ---
-            // This is crucial for the update logic to find the live instance of the box.
             box.instance = boxInstance;
-            
             boxInstance.render(contentEl);
         } else {
             console.warn(`ThoughtBubble: Unknown box type "${box.type}"`);
@@ -114,7 +145,6 @@ export class CanvasRenderer {
 
     showCreationMenu(x, y) {
         this.contextMenu.innerHTML = '';
-        
         for (const [type] of boxTypeRegistry.entries()) {
             const item = document.createElement('div');
             item.className = 'thought-bubble-context-menu-item';
@@ -122,7 +152,6 @@ export class CanvasRenderer {
             item.dataset.boxType = type;
             this.contextMenu.appendChild(item);
         }
-        
         this.contextMenu.style.left = `${x}px`;
         this.contextMenu.style.top = `${y}px`;
         this.contextMenu.style.display = 'block';
@@ -130,5 +159,69 @@ export class CanvasRenderer {
 
     hideCreationMenu() {
         this.contextMenu.style.display = 'none';
+    }
+
+    drawMinimap() {
+        const state = this.stateManager.state;
+        if (!this.minimapCtx || !this.minimapEl) return;
+        if (!state.boxes || state.boxes.length === 0) {
+            this.minimapCtx.clearRect(0, 0, this.minimapEl.width, this.minimapEl.height);
+            return;
+        }
+
+        const style = getComputedStyle(this.canvasEl);
+        const boxColor = style.getPropertyValue('--tb-header-text-color') || '#ddd';
+        const viewColor = style.getPropertyValue('--tb-accent-color') || '#5c5';
+
+        const bounds = state.boxes.reduce((b, box) => {
+            return {
+                minX: Math.min(b.minX, box.x),
+                minY: Math.min(b.minY, box.y),
+                maxX: Math.max(b.maxX, box.x + box.width),
+                maxY: Math.max(b.maxY, box.y + box.height)
+            };
+        }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+
+        const contentW = bounds.maxX - bounds.minX;
+        const contentH = bounds.maxY - bounds.minY;
+
+        if (contentW <= 0 || contentH <= 0 || !isFinite(contentW)) {
+            this.minimapCtx.clearRect(0, 0, this.minimapEl.width, this.minimapEl.height);
+            return;
+        }
+
+        const mapW = this.minimapEl.width - this.minimapPadding * 2;
+        const mapH = this.minimapEl.height - this.minimapPadding * 2;
+
+        const scale = Math.min(mapW / contentW, mapH / contentH);
+
+        const offsetX = (this.minimapEl.width - contentW * scale) / 2 - bounds.minX * scale;
+        const offsetY = (this.minimapEl.height - contentH * scale) / 2 - bounds.minY * scale;
+
+        this.minimapCtx.clearRect(0, 0, this.minimapEl.width, this.minimapEl.height);
+
+        this.minimapCtx.fillStyle = boxColor;
+        for (const box of state.boxes) {
+            this.minimapCtx.fillRect(
+                box.x * scale + offsetX,
+                box.y * scale + offsetY,
+                box.width * scale,
+                box.height * scale
+            );
+        }
+
+        const viewW = this.canvasEl.clientWidth / state.zoom;
+        const viewH = (this.canvasEl.clientHeight - TOOLBAR_HEIGHT) / state.zoom;
+        const viewX = -state.pan.x / state.zoom;
+        const viewY = (-state.pan.y + TOOLBAR_HEIGHT) / state.zoom;
+
+        this.minimapCtx.strokeStyle = viewColor;
+        this.minimapCtx.lineWidth = 2;
+        this.minimapCtx.strokeRect(
+            viewX * scale + offsetX,
+            viewY * scale + offsetY,
+            viewW * scale,
+            viewH * scale
+        );
     }
 }
