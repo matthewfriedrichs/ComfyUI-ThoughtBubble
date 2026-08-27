@@ -1,17 +1,20 @@
-/* --- General Widget Layout --- */
+/* ==========================================================================
+   1. ROOT CONTAINER & CANVAS VIEWPORT
+   ========================================================================== */
+
 .thought-bubble-widget-container {
     width: 100%;
     box-sizing: border-box;
-    font-family: var(--tb-font-family);
-    font-size: var(--tb-font-size);
+    font-family: var(--tb-font-family, sans-serif);
+    font-size: var(--tb-font-size, 14px);
 }
 
 .thought-bubble-widget {
     width: 100%;
     height: 100%;
-    background-color: var(--tb-bg-color);
-    border: 1px solid #444;
-    border-radius: 4px;
+    background-color: var(--tb-bg-color, #222);
+    border: 1px solid var(--tb-box-border-color, #444);
+    border-radius: 6px;
     position: relative;
     overflow: hidden;
     user-select: none;
@@ -35,53 +38,89 @@
     height: 100%;
     pointer-events: none;
     background-color: transparent;
-    background-image: linear-gradient(to right, var(--tb-grid-color) 1px, transparent 1px), linear-gradient(to bottom, var(--tb-grid-color) 1px, transparent 1px);
 }
 
-/* --- Toolbar --- */
+/* ==========================================================================
+   2. STREAMLINED TOOLBAR
+   ========================================================================== */
+
 .thought-bubble-toolbar {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 30px;
-    background-color: var(--tb-toolbar-bg-color);
+    top: 8px;
+    left: 8px;
+    width: calc(100% - 16px);
+    height: 32px;
+    background-color: var(--tb-toolbar-bg-color, #353535);
+    background: rgba(var(--tb-toolbar-bg-color-rgb, 53, 53, 53), 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--tb-box-border-color, #555);
+    border-radius: 6px;
     z-index: 10;
-    padding: 0 5px;
+    padding: 0 8px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
 }
 
 .thought-bubble-toolbar button,
 .thought-bubble-toolbar select {
     padding: 4px 8px;
-    background-color: var(--tb-button-bg-color);
-    color: var(--tb-button-text-color);
-    border: 1px solid var(--tb-box-border-color);
+    background-color: var(--tb-button-bg-color, #444);
+    color: var(--tb-button-text-color, #ddd);
+    border: 1px solid var(--tb-box-border-color, #555);
     border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+    transition: filter 0.15s, border-color 0.15s;
+}
+
+.thought-bubble-toolbar button:hover,
+.thought-bubble-toolbar select:hover {
+    filter: brightness(1.2);
+    border-color: var(--tb-accent-color, #5c5);
+}
+
+.thought-bubble-toolbar select option {
+    background-color: var(--tb-box-bg-color, #353535);
+    color: var(--tb-text-color, #ccc);
 }
 
 .thought-bubble-toolbar label {
-    color: var(--tb-text-color);
+    color: var(--tb-text-color, #ccc);
     font-size: 12px;
+    font-weight: bold;
 }
 
-/* --- Generic Box Styles --- */
+/* ==========================================================================
+   3. BOX & TEXTAREA ENGINE
+   ========================================================================== */
+
 .thought-bubble-box {
     position: absolute;
-    background-color: var(--tb-box-bg-color);
-    border: 1px solid var(--tb-box-border-color);
-    border-radius: 4px;
+    background-color: var(--tb-box-bg-color, #353535);
+    border: 1px solid var(--tb-box-border-color, #555);
+    border-radius: 6px;
     display: flex;
     flex-direction: column;
-    box-shadow: 2px 2px 10px var(--tb-box-shadow-color);
+    box-shadow: 0 6px 20px var(--tb-box-shadow-color, rgba(0, 0, 0, 0.4));
     z-index: 1;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    min-width: 200px;
+    min-height: 100px;
+}
+
+.thought-bubble-box.selected {
+    border-color: var(--tb-accent-color, #5c5);
+    box-shadow: 0 0 0 2px rgba(var(--tb-accent-color-rgb, 92, 204, 92), 0.4);
 }
 
 .thought-bubble-box.maximized {
     z-index: 100;
+    border-radius: 0;
 }
 
 .thought-bubble-box.minimized {
@@ -91,42 +130,58 @@
 }
 
 .thought-bubble-box-header {
-    background-color: var(--tb-header-bg-color);
-    color: var(--tb-header-text-color);
-    padding: 4px;
+    background-color: var(--tb-header-bg-color, #4a4a4a);
+    color: var(--tb-header-text-color, #ddd);
+    padding: 2px 6px;
     cursor: move;
     display: flex;
     justify-content: space-between;
     align-items: center;
     height: 28px;
     box-sizing: border-box;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    border-bottom: 1px solid var(--tb-box-border-color, #555);
 }
 
 .thought-bubble-box-title {
-    background: none;
+    background: transparent;
     border: none;
-    color: var(--tb-header-text-color);
+    color: var(--tb-header-text-color, #ddd);
     font-weight: bold;
+    font-size: 12px;
     width: 100%;
     cursor: move;
-    padding: 0;
+    outline: none;
+    padding: 0 2px;
 }
 
 .thought-bubble-box-title:not([readonly]) {
     cursor: text;
+    background-color: var(--tb-textarea-bg-color, #282828);
+    border-radius: 3px;
 }
 
 .thought-bubble-box-controls {
     display: flex;
+    align-items: center;
+    gap: 2px;
 }
 
 .thought-bubble-box-controls button {
     background: none;
     border: none;
-    color: var(--tb-header-text-color);
+    color: var(--tb-header-text-color, #ddd);
     cursor: pointer;
-    font-size: 14px;
-    padding: 0 4px;
+    font-size: 12px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    opacity: 0.75;
+}
+
+.thought-bubble-box-controls button:hover {
+    opacity: 1;
+    background-color: rgba(255, 255, 255, 0.15);
 }
 
 .thought-bubble-box-content {
@@ -135,233 +190,174 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    position: relative;
 }
 
 .thought-bubble-box-content textarea {
     width: 100%;
     height: 100%;
-    background-color: var(--tb-textarea-bg-color);
-    color: var(--tb-text-color);
+    background-color: var(--tb-textarea-bg-color, #282828);
+    color: var(--tb-text-color, #ccc);
+    font-family: inherit;
+    font-size: inherit;
     border: none;
     resize: none;
-    padding: 5px;
+    padding: 6px;
     box-sizing: border-box;
+    outline: none;
+    overflow: auto;
 }
 
 .thought-bubble-box-resize-handle {
     position: absolute;
     bottom: 0;
     right: 0;
-    width: 14px;
-    height: 14px;
-    cursor: se-resize;
-    background: var(--tb-accent-color);
-    clip-path: polygon(100% 0, 100% 100%, 0 100%);
-}
-
-/* --- Specific Box Type Styles --- */
-.thought-bubble-box.text-box:not(.minimized) {
-    min-width: 200px;
-    min-height: 100px;
-}
-
-.thought-bubble-box.controls-box:not(.minimized) {
-    min-width: 300px;
-    min-height: 200px;
-}
-
-.thought-bubble-box.area-box:not(.minimized) {
-    min-width: 500px;
-    min-height: 500px;
-}
-
-.thought-bubble-box.list-box:not(.minimized) {
-    min-width: 300px;
-    min-height: 100px;
-}
-
-/* -- Controls Box -- */
-.thought-bubble-box-content.controls-box {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    padding: 5px;
-    overflow: hidden;
-}
-
-.controls-add-button {
-    width: 100%;
-    padding: 8px;
-    border-radius: 4px;
-    flex-shrink: 0;
-    background-color: var(--tb-button-bg-color);
-    color: var(--tb-button-text-color);
-    border: 1px solid var(--tb-box-border-color);
-}
-
-.controls-variables-container {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    overflow-y: auto;
-}
-
-.controls-variable-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr auto;
-    gap: 5px;
-    align-items: center;
-}
-
-.controls-variable-row input,
-.controls-variable-row select {
-    width: 100%;
-    background-color: var(--tb-textarea-bg-color);
-    color: var(--tb-text-color);
-    border: 1px solid var(--tb-bg-color);
-    border-radius: 4px;
-    padding: 4px;
-}
-
-.controls-variable-value {
-    text-align: right;
-}
-
-.controls-variable-delete {
-    background: #5c2828;
-    border: 1px solid #a14242;
-    color: #fff;
-    border-radius: 4px;
-    cursor: pointer;
-    width: 28px;
-    height: 28px;
-}
-
-/* -- Area Box -- */
-.area-conditioning {
-    padding: 4px;
-    gap: 4px;
-}
-
-.ac-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-    flex-wrap: wrap;
-    height: auto;
-    min-height: 30px;
-}
-
-.ac-control-group {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.ac-control-group label {
-    white-space: nowrap;
-}
-
-.ac-toolbar input {
-    width: 50px;
-    background-color: var(--tb-textarea-bg-color);
-    border: 1px solid var(--tb-bg-color);
-    color: var(--tb-text-color);
-}
-
-.ac-main-content {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: row;
-    gap: 0;
-    overflow: hidden;
-}
-
-.ac-canvas-container {
-    flex-grow: 1;
-    min-width: 150px;
-    position: relative;
-    display: flex;
-}
-
-.ac-canvas-container canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    cursor: crosshair;
-}
-
-.ac-textarea-container {
-    display: flex;
-    flex-direction: column;
-    min-width: 100px;
-}
-
-.ac-divider {
-    flex-shrink: 0;
-    width: 10px;
-    background-color: transparent;
-    cursor: col-resize;
-    transition: background-color 0.2s;
-}
-
-.ac-divider:hover {
-    background-color: var(--tb-accent-color);
-}
-
-.ac-resize-handle {
-    position: absolute;
     width: 12px;
     height: 12px;
-    background: var(--tb-accent-color);
-    border: 1px solid #111;
-    z-index: 5;
-    border-radius: 50%;
+    cursor: se-resize;
+    background: var(--tb-accent-color, #5c5);
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+    opacity: 0.8;
 }
 
-.ac-handle-nw,
-.ac-handle-se {
-    cursor: nwse-resize;
-}
+/* ==========================================================================
+   4. SYNTAX HIGHLIGHTING & BALANCED PARENS
+   ========================================================================== */
 
-.ac-handle-ne,
-.ac-handle-sw {
-    cursor: nesw-resize;
-}
-
-.ac-handle-n,
-.ac-handle-s {
-    cursor: ns-resize;
-}
-
-.ac-handle-e,
-.ac-handle-w {
-    cursor: ew-resize;
-}
-
-
-/* --- Modals & Popups --- */
-.lora-autocomplete-dropdown {
+.thought-bubble-paren-match {
     position: absolute;
-    background-color: var(--tb-box-bg-color, #2d2d2d);
+    pointer-events: none;
+    z-index: 10;
+    background: transparent;
+    border: none;
+    font-weight: 900;
+    margin: 0;
+    padding: 0;
+    opacity: 1;
+    transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
+.tb-paren-level-0 {
+    color: #50fa7b;
+}
+
+.tb-paren-level-1 {
+    color: #8be9fd;
+}
+
+.tb-paren-level-2 {
+    color: #ff79c6;
+}
+
+.tb-paren-level-3 {
+    color: #bd93f9;
+}
+
+.tb-paren-error {
+    color: #ff5555;
+    transform: scale(1.2);
+}
+
+.tb-paren-active {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.tb-paren-fading-out {
+    opacity: 0;
+    transform: scale(1.0);
+}
+
+@keyframes errorPulse {
+    0% {
+        background-color: var(--tb-textarea-bg-color, #282828);
+    }
+
+    50% {
+        background-color: rgba(255, 85, 85, 0.25);
+    }
+
+    100% {
+        background-color: var(--tb-textarea-bg-color, #282828);
+    }
+}
+
+.thought-bubble-input-error {
+    animation: errorPulse 1s infinite;
+}
+
+/* ==========================================================================
+   5. MINIMAP & CONTEXT MENU
+   ========================================================================== */
+
+.thought-bubble-minimap {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    width: 180px;
+    height: 120px;
+    background-color: var(--tb-bg-color, #222);
     border: 1px solid var(--tb-box-border-color, #555);
     border-radius: 4px;
-    max-height: 200px;
+    z-index: 100;
+    opacity: 0.9;
+    display: none;
+    cursor: grab;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+.thought-bubble-minimap:active {
+    cursor: grabbing;
+}
+
+.thought-bubble-context-menu {
+    display: none;
+    position: absolute;
+    background-color: var(--tb-box-bg-color, #353535);
+    border: 1px solid var(--tb-box-border-color, #555);
+    color: var(--tb-text-color, #ccc);
+    border-radius: 4px;
+    min-width: 140px;
+    z-index: 2200;
+    padding: 4px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+.thought-bubble-context-menu-item {
+    padding: 6px 10px;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.thought-bubble-context-menu-item:hover {
+    background-color: var(--tb-header-bg-color, #4a4a4a);
+    color: var(--tb-header-text-color, #ddd);
+}
+
+/* ==========================================================================
+   6. AUTOCOMPLETE DROPDOWN & MODALS
+   ========================================================================== */
+
+.lora-autocomplete-dropdown {
+    position: absolute;
+    background-color: var(--tb-box-bg-color, #353535);
+    border: 1px solid var(--tb-box-border-color, #555);
+    color: var(--tb-text-color, #ccc);
+    border-radius: 4px;
+    max-height: 220px;
     overflow-y: auto;
     z-index: 2100;
-    color: var(--tb-text-color, #ccc);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
 }
 
 .lora-autocomplete-item {
     padding: 5px 10px;
+    font-size: 12px;
     cursor: pointer;
 }
 
-.lora-autocomplete-item:hover,
-.lora-autocomplete-item.selected {
+.lora-autocomplete-item:hover {
     background-color: var(--tb-header-bg-color, #4a4a4a);
 }
 
@@ -372,434 +368,137 @@
     width: 100%;
     height: 100%;
     background-color: rgba(0, 0, 0, 0.7);
-    z-index: 2000;
+    z-index: 2500;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .thought-bubble-modal-content {
-    background-color: #333;
-    border: 1px solid #555;
-    border-radius: 8px;
-    padding: 20px;
-    min-width: 400px;
+    background-color: var(--tb-box-bg-color, #333);
+    border: 1px solid var(--tb-box-border-color, #555);
+    color: var(--tb-text-color, #ccc);
+    border-radius: 6px;
+    padding: 16px;
+    min-width: 360px;
     max-width: 90%;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .thought-bubble-modal-title {
-    margin-top: 0;
-    color: #eee;
+    margin: 0;
+    font-size: 16px;
+    color: var(--tb-header-text-color, #eee);
+    border-bottom: 1px solid var(--tb-box-border-color, #555);
+    padding-bottom: 8px;
 }
 
-.thought-bubble-modal-body {
-    margin: 20px 0;
-    color: #ccc;
+.thought-bubble-theme-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 400px;
+    overflow-y: auto;
 }
 
-.thought-bubble-modal-body input {
+.theme-editor-row {
+    display: grid;
+    grid-template-columns: 1fr 100px;
+    align-items: center;
+    gap: 8px;
+}
+
+.theme-editor-row label {
+    font-size: 12px;
+    text-transform: capitalize;
+}
+
+.theme-editor-row input {
+    background-color: var(--tb-textarea-bg-color, #282828);
+    border: 1px solid var(--tb-box-border-color, #555);
+    color: var(--tb-text-color, #ccc);
+    padding: 3px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.theme-editor-row input[type="color"] {
     width: 100%;
-    padding: 8px;
-    box-sizing: border-box;
-    background-color: #222;
-    border: 1px solid #555;
-    color: #ccc;
-    border-radius: 4px;
+    height: 24px;
+    padding: 0;
+    cursor: pointer;
 }
 
 .thought-bubble-modal-footer {
-    text-align: right;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    border-top: 1px solid var(--tb-box-border-color, #555);
+    padding-top: 8px;
 }
 
 .thought-bubble-modal-footer button {
-    margin-left: 10px;
-    background-color: var(--tb-button-bg-color);
-    color: var(--tb-button-text-color);
+    background-color: var(--tb-button-bg-color, #444);
+    color: var(--tb-button-text-color, #ddd);
+    border: 1px solid var(--tb-box-border-color, #555);
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+}
+
+/* ==========================================================================
+   7. SCROLLBARS
+   ========================================================================== */
+
+.thought-bubble-box-content textarea::-webkit-scrollbar,
+.thought-bubble-theme-editor::-webkit-scrollbar,
+.lora-autocomplete-dropdown::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.thought-bubble-box-content textarea::-webkit-scrollbar-thumb,
+.thought-bubble-theme-editor::-webkit-scrollbar-thumb,
+.lora-autocomplete-dropdown::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
 }
 
 .thought-bubble-file-list {
-    max-height: 300px;
+    max-height: 260px;
     overflow-y: auto;
-    border: 1px solid #222;
-    padding: 5px;
-    background-color: #282828;
+    border: 1px solid var(--tb-box-border-color, #555);
+    background-color: var(--tb-textarea-bg-color, #282828);
+    border-radius: 4px;
+    margin-top: 4px;
 }
 
 .thought-bubble-file-item {
-    padding: 8px 12px;
+    padding: 6px 10px;
     cursor: pointer;
-    border-bottom: 1px solid #333;
-}
-
-.thought-bubble-file-item:hover {
-    background-color: #4a4a4a;
+    border-bottom: 1px solid var(--tb-box-border-color, #555);
+    color: var(--tb-text-color, #ccc);
+    font-size: 12px;
 }
 
 .thought-bubble-file-item:last-child {
     border-bottom: none;
 }
 
-.thought-bubble-context-menu {
-    display: none;
-    position: absolute;
-    background-color: var(--tb-box-bg-color, #2d2d2d);
-    border: 1px solid var(--tb-box-border-color, #555);
-    border-radius: 4px;
-    min-width: 150px;
-    z-index: 2200;
-    color: var(--tb-text-color, #ccc);
-    padding: 5px;
-}
-
-.thought-bubble-context-menu-item {
-    padding: 8px 12px;
-    cursor: pointer;
-}
-
-.thought-bubble-context-menu-item:hover {
+.thought-bubble-file-item:hover {
     background-color: var(--tb-header-bg-color, #4a4a4a);
-}
-
-.theme-editor-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr auto;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 5px;
-}
-
-.theme-editor-row label {
-    text-transform: capitalize;
+    color: var(--tb-header-text-color, #fff);
 }
 
 .thought-bubble-theme-header {
+    font-size: 11px;
     font-weight: bold;
-    color: #aaa;
-    margin-top: 10px;
-    margin-bottom: 5px;
-    padding: 0 12px;
-    font-size: 12px;
+    color: var(--tb-accent-color, #5c5);
+    padding: 6px 10px 2px 10px;
     text-transform: uppercase;
-}
-
-.thought-bubble-modal-body hr {
-    border: none;
-    border-top: 1px solid #444;
-    margin: 10px 0;
-}
-
-.theme-editor-row input[type="color"] {
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 28px;
-    background-color: transparent;
-    border: 1px solid var(--tb-box-border-color);
-    cursor: pointer;
-}
-
-.theme-editor-row input[type="color"]::-webkit-color-swatch {
-    border: none;
-    border-radius: 4px;
-}
-
-.theme-editor-row input[type="color"]::-moz-color-swatch {
-    border: none;
-    border-radius: 4px;
-}
-
-/* --- NEW: Minimap Styles --- */
-.thought-bubble-minimap {
-    position: absolute;
-    bottom: 10px;
-    right: 10px;
-    width: 200px;
-    /* Fixed size for the map */
-    height: 150px;
-    background-color: var(--tb-bg-color, #222);
-    border: 1px solid var(--tb-grid-color, #404040);
-    z-index: 100;
+    letter-spacing: 0.5px;
     opacity: 0.9;
-    display: none;
-    /* Initially hidden */
-    pointer-events: none;
-    /* Non-interactive */
-}
-
-/* --- NEW: List Box Styles --- */
-.thought-bubble-box-content.list-box {
-    display: flex;
-    flex-direction: column;
-    /* Remove padding so toolbar is flush */
-    padding: 0;
-    gap: 0;
-    overflow: hidden;
-}
-
-.list-box-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-    padding: 4px;
-    /* Use header bg for the toolbar */
-    background-color: var(--tb-header-bg-color);
-    border-bottom: 1px solid var(--tb-box-border-color);
-}
-
-.list-box-toolbar button {
-    background: var(--tb-button-bg-color);
-    color: var(--tb-button-text-color);
-    border: 1px solid var(--tb-box-border-color);
-    border-radius: 4px;
-    padding: 2px 6px;
-    font-size: 12px;
-    cursor: pointer;
-}
-
-.list-box-toolbar button:hover {
-    filter: brightness(1.2);
-}
-
-/* Make the listbox textarea fill remaining space */
-.list-box-toolbar+textarea {
-    flex-grow: 1;
-    /* These properties are inherited, but good to be explicit */
-    width: 100%;
-    height: auto;
-    border: none;
-    resize: none;
-}
-
-/* --- NEW: Weight Editor Modal Styles --- */
-.thought-bubble-weight-editor-body {
-    max-height: 400px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding-right: 10px;
-    /* for scrollbar */
-    color: #ccc;
-    /* Use a default color just in case */
-    color: var(--tb-text-color, #ccc);
-}
-
-.weight-editor-row {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 10px;
-    align-items: center;
-}
-
-.weight-editor-row label {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: 14px;
-}
-
-.weight-editor-input {
-    width: 70px;
-    padding: 4px 8px;
-    background-color: #282828;
-    /* Use a default color just in case */
-    background-color: var(--tb-textarea-bg-color, #282828);
-    color: #ccc;
-    /* Use a default color just in case */
-    color: var(--tb-text-color, #ccc);
-    border: 1px solid #555;
-    /* Use a default color just in case */
-    border: 1px solid var(--tb-box-border-color, #555);
-    border-radius: 4px;
-    text-align: right;
-}
-
-/* --- MODIFIED: Append Modal Options --- */
-.append-modal-options {
-    display: flex;
-    flex-flow: row wrap;
-    /* Allows groups to wrap if needed, but prefer a row */
-    justify-content: space-between;
-    /* Spreads the two groups out */
-    align-items: center;
-    gap: 10px 20px;
-    /* Vertical and horizontal gap */
-    padding: 0 12px 10px;
-    /* Match file list padding */
-    border-bottom: 1px solid #444;
-}
-
-.append-option-group {
-    display: flex;
-    align-items: center;
-    /* This is key to aligning text and inputs */
-    gap: 5px;
-    /* Space between elements in a group */
-    flex-basis: auto;
-    /* Let each group take its own space */
-    flex-shrink: 0;
-}
-
-.append-option-group label {
-    color: var(--tb-text-color, #ccc);
-    cursor: pointer;
-    margin-right: 10px;
-    /* Add space *after* a label, before the next input */
-}
-
-.append-option-group span {
-    color: var(--tb-text-color, #ccc);
-    font-weight: bold;
-    margin-right: 5px;
-}
-
-.append-option-group input[type="radio"],
-.append-option-group input[type="checkbox"] {
-    cursor: pointer;
-    margin: 0;
-}
-
-
-/* --- NEW: Sort Modal Styles --- */
-.thought-bubble-sort-modal-body {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.thought-bubble-sort-modal-body button {
-    /* Use the main button styles from the node toolbar */
-    padding: 8px 12px;
-    background-color: var(--tb-button-bg-color);
-    color: var(--tb-button-text-color);
-    border: 1px solid var(--tb-box-border-color);
-    border-radius: 4px;
-    text-align: left;
-    cursor: pointer;
-}
-
-.thought-bubble-sort-modal-body button:hover {
-    filter: brightness(1.2);
-}
-
-.thought-bubble-paren-match {
-    position: absolute;
-    background-color: rgba(0, 255, 0, 0.4);
-    /* Green highlight */
-    border: 1px solid rgba(0, 255, 0, 0.8);
-    border-radius: 3px;
-    pointer-events: none;
-    /* Let clicks pass through */
-    z-index: 100;
-    /* Animate it fading out after 1 second */
-    animation: fadeOut 0.5s ease-out 1s forwards;
-}
-
-/* The error flash when you type a stray ')' */
-@keyframes flashError {
-    0% {
-        background-color: rgba(255, 0, 0, 0.3);
-    }
-
-    100% {
-        background-color: var(--tb-box-bg);
-    }
-}
-
-.thought-bubble-flash-error {
-    animation: flashError 0.3s ease-out;
-}
-
-@keyframes fadeOut {
-    to {
-        opacity: 0;
-    }
-}
-
-/* --- PARENTHESIS MATCHING --- */
-
-.thought-bubble-paren-match {
-    position: absolute;
-    pointer-events: none;
-    z-index: 100;
-
-    /* CLEAN STYLE: No borders, no shadows, just text */
-    background-color: transparent;
-    border: none;
-    outline: none;
-    font-weight: 900;
-    /* Extra bold to cover underlying text */
-    margin: 0;
-    padding: 0;
-
-    /* Disable old animations */
-    animation: none !important;
-
-    /* Fade transitions */
-    transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28);
-    opacity: 1;
-}
-
-/* --- RAINBOW TEXT COLORS (Flat Colors, No Glow) --- */
-
-/* Level 0: Green */
-.tb-paren-level-0 {
-    color: #50fa7b;
-}
-
-/* Level 1: Cyan */
-.tb-paren-level-1 {
-    color: #8be9fd;
-}
-
-/* Level 2: Pink */
-.tb-paren-level-2 {
-    color: #ff79c6;
-}
-
-/* Level 3: Purple */
-.tb-paren-level-3 {
-    color: #bd93f9;
-}
-
-/* Error: Red Text for the character itself */
-.tb-paren-error {
-    color: #ff5555;
-    transform: scale(1.2);
-}
-
-/* --- TEXT BOX ERROR STATE (The Blinking Background) --- */
-
-@keyframes errorPulse {
-    0% {
-        background-color: var(--tb-box-bg);
-    }
-
-    50% {
-        background-color: rgba(255, 85, 85, 0.25);
-    }
-
-    /* Red tint */
-    100% {
-        background-color: var(--tb-box-bg);
-    }
-}
-
-.thought-bubble-input-error {
-    animation: errorPulse 1s infinite;
-}
-
-/* --- ANIMATION STATES --- */
-
-.tb-paren-active {
-    opacity: 1;
-    transform: scale(1.1);
-}
-
-.tb-paren-fading-out {
-    opacity: 0;
-    transform: scale(1.0);
 }

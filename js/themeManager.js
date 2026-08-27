@@ -80,4 +80,15 @@ export class ThemeManager {
         this.applyTheme();
         return this.getTheme();
     }
+
+    /**
+     * Removes the <style> tag this instance injected into <head>. Must be called
+     * when the owning node is removed from the graph -- the style tag is appended
+     * to document.head, not to any node-owned DOM element, so nothing removes it
+     * automatically when the node's own elements are discarded.
+     */
+    destroy() {
+        const styleTag = document.getElementById(this.styleTagId);
+        if (styleTag) styleTag.remove();
+    }
 }

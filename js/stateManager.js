@@ -10,46 +10,45 @@ export class StateManager {
     constructor(dataWidget) {
         this.dataWidget = dataWidget;
         this.state = {};
-        this.lastKnownValue = this.dataWidget.value;
-        this.lastSelectedBoxType = 'text';
-
-        // --- ROBUSTNESS: Rate Limiting State ---
-        this.saveTimer = null;           // Timer for pending saves
-        this.lastSaveTimestamp = 0;      // When we last actually wrote to the widget
-        this.MIN_SAVE_INTERVAL_MS = 250; // Hard limit: Max ~4 saves per second
-
+        this.lastKnownValue = this.dataWidget ? this.dataWidget.value : "";
+        this.saveTimer = null;
+        this.lastSaveTimestamp = 0;
+        this.MIN_SAVE_INTERVAL_MS = 200;
         this.load();
     }
 
-    load() {
+    load(explicitJson = null) {
         const defaultState = {
             boxes: [{
-                id: "default-output-box", title: "output", content: "", type: "text",
-                x: 100, y: 100, width: 400, height: 300, displayState: "normal",
+                id: "default-output-box",
+                title: "output",
+                content: "",
+                type: "text",
+                x: 100,
+                y: 100,
+                width: 400,
+                height: 300,
+                displayState: "normal",
             }],
-            pan: { x: 0, y: 0 }, zoom: 1.0, gridSize: 100, showGrid: true, savedView: null,
-            iterator: 0,
-            theme: {},
-            periodIsBreak: true,
+            pan: { x: 0, y: 0 },
+            zoom: 1.0,
+            gridSize: 100,
+            showGrid: true,
             showMinimap: false,
+            theme: {},
         };
+
         try {
-            const loadedState = JSON.parse(this.dataWidget.value);
-            this.state = Object.assign({}, defaultState, loadedState);
-        } catch (e) {
+            const raw = explicitJson !== null ? explicitJson : (this.dataWidget ? this.dataWidget.value : "");
+            const loaded = JSON.parse(raw);
+            this.state = Object.assign({}, defaultState, loaded);
+        } catch {
             this.state = defaultState;
-            console.error("Failed to parse ThoughtBubble state, resetting to default:", e);
         }
-        // Initial load should be immediate
-        this.save(true);
+        this._commitState();
     }
 
-    /**
-     * ROBUST SAVE METHOD
-     * @param {boolean} forceImmediate - If true, bypasses rate limiting (use for critical events like 'Queue Prompt')
-     */
     save(forceImmediate = false) {
-        // 1. If forced, cancel any pending timers and commit instantly
         if (forceImmediate) {
             if (this.saveTimer) {
                 clearTimeout(this.saveTimer);
@@ -59,31 +58,21 @@ export class StateManager {
             return;
         }
 
-        // 2. If a save is already scheduled, we don't need to do anything.
-        // The pending timer will capture the latest state when it fires.
         if (this.saveTimer) return;
 
-        // 3. Rate Limit Check
         const now = Date.now();
-        const timeSinceLast = now - this.lastSaveTimestamp;
-
-        if (timeSinceLast >= this.MIN_SAVE_INTERVAL_MS) {
-            // Safe to save immediately
+        const elapsed = now - this.lastSaveTimestamp;
+        if (elapsed >= this.MIN_SAVE_INTERVAL_MS) {
             this._commitState();
         } else {
-            // Too soon! Schedule a save for the remaining cooldown time.
-            const waitTime = this.MIN_SAVE_INTERVAL_MS - timeSinceLast;
             this.saveTimer = setTimeout(() => {
                 this.saveTimer = null;
                 this._commitState();
-            }, waitTime);
+            }, this.MIN_SAVE_INTERVAL_MS - elapsed);
         }
     }
 
-    /**
-     * Helper for UX events (like "Wait until user stops zooming")
-     */
-    saveDebounced(delay = 500) {
+    saveDebounced(delay = 400) {
         if (this.saveTimer) clearTimeout(this.saveTimer);
         this.saveTimer = setTimeout(() => {
             this.saveTimer = null;
@@ -91,53 +80,79 @@ export class StateManager {
         }, delay);
     }
 
-    /**
-     * Internal method to actually write data. Do not call directly.
-     */
     _commitState() {
         this.lastSaveTimestamp = Date.now();
-
-        const replacer = (key, value) => {
-            if (key === 'instance') return undefined;
-            return value;
-        };
-
+        const replacer = (key, value) => key === "instance" ? undefined : value;
         const newValue = JSON.stringify(this.state, replacer);
-        this.dataWidget.value = newValue;
+        if (this.dataWidget) {
+            this.dataWidget.value = newValue;
+        }
         this.lastKnownValue = newValue;
     }
 
     getBoxById(boxId) {
-        return this.state.boxes.find(b => b.id === boxId);
+        return (this.state.boxes || []).find(b => b.id === boxId);
     }
 
-    snapToGrid(value) {
-        if (!this.state || this.state.gridSize === 0) return value;
-        return Math.round(value / this.state.gridSize) * this.state.gridSize;
+    updateBoxContent(boxId, content) {
+        const box = this.getBoxById(boxId);
+        if (box) {
+            box.content = content;
+            if (box.instance && typeof box.instance.setContent === "function") {
+                box.instance.setContent(content);
+            }
+            this._commitState();
+        }
     }
 
-    createNewBox(boxType, worldX, worldY, width, height) {
-        const BoxClass = boxTypeRegistry.get(boxType);
+    patchPersisters(boxId, updates) {
+        const box = this.getBoxById(boxId);
+        if (!box) return;
+
+        if (box.instance && typeof box.instance.patchPersisters === "function") {
+            box.instance.patchPersisters(updates);
+        } else {
+            let text = box.content || "";
+            for (const update of updates) {
+                const { name, new_value } = update;
+                if (!name || new_value === undefined) continue;
+                const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const regex = new RegExp(`(\\b(?:p|persister)\\(\\s*${escapedName}\\s*\\|)([^)]*)(\\))`, "gi");
+                text = text.replace(regex, `$1${new_value}$3`);
+            }
+            box.content = text;
+            this._commitState();
+        }
+    }
+
+    snapToGrid(val) {
+        if (!this.state || !this.state.gridSize || this.state.gridSize <= 0) return val;
+        return Math.round(val / this.state.gridSize) * this.state.gridSize;
+    }
+
+    createNewBox(boxType = "text", worldX = 100, worldY = 100, width = 350, height = 220) {
+        const BoxClass = boxTypeRegistry.get(boxType) || boxTypeRegistry.get("text");
         if (!BoxClass) return;
 
-        const w = this.snapToGrid(width || 300);
-        const h = this.snapToGrid(height || 200);
+        const w = Math.max(200, this.snapToGrid(width));
+        const h = Math.max(100, this.snapToGrid(height));
         const x = this.snapToGrid(worldX);
         const y = this.snapToGrid(worldY);
 
-        let newBoxState = BoxClass.createDefaultState(x, y, w, h);
-
+        const newBoxState = BoxClass.createDefaultState(x, y, w, h);
         const newBox = { id: uuidv4(), ...newBoxState, displayState: "normal" };
+
+        this.state.boxes = this.state.boxes || [];
         this.state.boxes.push(newBox);
         this.save();
     }
 
     deleteBox(boxId) {
-        const box = this.state.boxes.find(b => b.id === boxId);
-        if (box && box.displayState === 'maximized' && this.state.savedView) {
+        const box = this.getBoxById(boxId);
+        if (box && box.displayState === "maximized") {
             this.unmaximize(box);
         }
-        this.state.boxes = this.state.boxes.filter(b => b.id !== boxId);
+        this.state.boxes = (this.state.boxes || []).filter(b => b.id !== boxId);
         this.save();
     }
 

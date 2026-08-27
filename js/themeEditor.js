@@ -15,182 +15,176 @@ export class ThemeEditor {
     }
 
     createEditorBody() {
-        const container = document.createElement('div');
-        container.className = 'thought-bubble-theme-editor';
-
+        const container = document.createElement("div");
+        container.className = "thought-bubble-theme-editor";
         const currentTheme = this.stateManager.state.theme || {};
 
         for (const key in DEFAULT_THEME) {
-            const row = document.createElement('div');
-            row.className = 'theme-editor-row';
+            const row = document.createElement("div");
+            row.className = "theme-editor-row";
 
-            const label = document.createElement('label');
-            label.textContent = key.replace('--tb-', '').replace(/-/g, ' ');
+            const label = document.createElement("label");
+            label.textContent = key.replace("--tb-", "").replace(/-/g, " ");
 
-            const isColor = key.toLowerCase().includes('color');
-            const input = document.createElement('input');
-            input.type = isColor ? 'color' : 'text';
+            const isColor = key.toLowerCase().includes("color");
+            const input = document.createElement("input");
+            input.type = isColor ? "color" : "text";
             input.value = currentTheme[key] || DEFAULT_THEME[key];
 
-            const textInput = isColor ? document.createElement('input') : null;
-            if (isColor) {
-                textInput.type = 'text';
-                textInput.value = input.value;
-                input.addEventListener('input', () => textInput.value = input.value);
-                textInput.addEventListener('change', () => {
-                    input.value = textInput.value;
-                    // Trigger the commit manually if text input changes
-                    commitUpdate(textInput.value);
-                });
-            }
-
-            // --- FIX: Split 'preview' from 'save' ---
-
-            // 1. VISUAL PREVIEW: Runs on every mouse move (cheap CSS update)
             const previewUpdate = (e) => {
                 const newVal = e.target.value;
                 if (!this.stateManager.state.theme) this.stateManager.state.theme = {};
                 this.stateManager.state.theme[key] = newVal;
                 this.themeManager.updateTheme(this.stateManager.state.theme);
-                // NO SAVE HERE
             };
 
-            // 2. DATA COMMIT: Runs only when mouse is released (expensive Save)
             const commitUpdate = (val) => {
                 if (!this.stateManager.state.theme) this.stateManager.state.theme = {};
-                this.stateManager.state.theme[key] = val; // Ensure state is consistent
-                this.stateManager.save(); // Debounced save is fine here
+                this.stateManager.state.theme[key] = val;
+                this.stateManager.save();
             };
 
-            // Bind Events
-            input.addEventListener('input', previewUpdate);
-            input.addEventListener('change', (e) => commitUpdate(e.target.value));
+            input.addEventListener("input", previewUpdate);
+            input.addEventListener("change", (e) => commitUpdate(e.target.value));
 
             row.append(label, input);
-            if (textInput) row.appendChild(textInput);
             container.appendChild(row);
         }
         return container;
     }
 
     createFooterButtons() {
-        const saveButton = document.createElement('button');
-        saveButton.textContent = "Save Theme";
-        saveButton.onclick = () => this.handleSaveTheme();
-
-        const loadButton = document.createElement('button');
-        loadButton.textContent = "Load Theme";
-        loadButton.onclick = () => this.handleLoadTheme();
-
-        const defaultButton = document.createElement('button');
-        defaultButton.textContent = "Set as Default";
-        defaultButton.onclick = () => this.handleSetDefault();
-
-        const resetButton = document.createElement('button');
+        const resetButton = document.createElement("button");
         resetButton.textContent = "Reset";
         resetButton.onclick = () => {
             this.stateManager.state.theme = this.themeManager.resetToDefault();
             this.stateManager.save();
             this.modal.close();
-            this.show(); // Re-open to show reset values
+            this.show();
         };
+
+        const loadButton = document.createElement("button");
+        loadButton.textContent = "Load Theme";
+        loadButton.onclick = () => this.handleLoadTheme();
+
+        const saveButton = document.createElement("button");
+        saveButton.textContent = "Save Theme";
+        saveButton.onclick = () => this.handleSaveTheme();
+
+        const defaultButton = document.createElement("button");
+        defaultButton.textContent = "Set Default";
+        defaultButton.onclick = () => this.handleSetDefault();
 
         return [resetButton, loadButton, saveButton, defaultButton];
     }
 
     async handleSaveTheme() {
-        const filename = prompt("Enter a name for your theme (e.g., 'my-theme'). It will be saved as a .json file in your user folder.");
+        const filename = prompt("Enter a name for your theme (e.g. 'amber'):");
         if (!filename) return;
 
+        const cleanName = filename.trim().replace(/\.json$/i, "");
+        if (!cleanName) return;
+
         try {
-            const response = await fetch('/thoughtbubble/themes/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename: `${filename}.json`, content: this.stateManager.state.theme }),
+            const response = await fetch("/thoughtbubble/themes/save", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    filename: `${cleanName}.json`,
+                    content: this.stateManager.state.theme || {},
+                }),
             });
-            if (!response.ok) throw new Error((await response.json()).error);
-            alert("Theme saved successfully!");
-        } catch (error) {
-            console.error("Failed to save theme:", error);
-            alert(`Error: ${error.message}`);
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.error || "Failed to save theme.");
+            }
+            alert(`Theme '${cleanName}' saved successfully!`);
+        } catch (err) {
+            console.error("Theme save error:", err);
+            alert(`Error saving theme: ${err.message}`);
         }
     }
 
     async handleLoadTheme() {
         const loadModal = new ThoughtBubbleModal();
         try {
-            const [userThemesRes, defaultThemesRes] = await Promise.all([
-                fetch('/thoughtbubble/themes/list'),
-                fetch('/thoughtbubble/themes/list_default')
+            const [userRes, defaultRes] = await Promise.all([
+                fetch("/thoughtbubble/themes/list"),
+                fetch("/thoughtbubble/themes/list_default"),
             ]);
 
-            if (!userThemesRes.ok || !defaultThemesRes.ok) throw new Error('Failed to fetch theme lists.');
+            const userThemes = userRes.ok ? await userRes.json() : [];
+            const defaultThemes = defaultRes.ok ? await defaultRes.json() : [];
 
-            const userThemes = await userThemesRes.json();
-            const defaultThemes = await defaultThemesRes.json();
+            const container = document.createElement("div");
+            const list = document.createElement("div");
+            list.className = "thought-bubble-file-list";
+            container.appendChild(list);
 
-            const listContainer = document.createElement('div');
-
-            const createItem = (file) => {
-                const item = document.createElement('div');
-                item.textContent = file.replace('.json', '');
-                item.className = 'thought-bubble-file-item';
+            const addItem = (filename, isDefault = false) => {
+                const item = document.createElement("div");
+                item.className = "thought-bubble-file-item";
+                const themeName = filename.replace(/\.json$/i, "");
+                item.textContent = isDefault ? `${themeName} (Built-in)` : themeName;
                 item.onclick = async () => {
-                    const loadResponse = await fetch(`/thoughtbubble/themes/load?filename=${file}`);
-                    const themeData = await loadResponse.json();
-                    this.stateManager.state.theme = themeData;
-                    this.themeManager.updateTheme(themeData);
-                    this.stateManager.save();
-                    loadModal.close();
-                    this.modal.close();
+                    try {
+                        const res = await fetch(`/thoughtbubble/themes/load?filename=${encodeURIComponent(filename)}`);
+                        if (!res.ok) throw new Error("Could not load theme file.");
+                        const themeData = await res.json();
+                        this.stateManager.state.theme = themeData;
+                        this.themeManager.updateTheme(themeData);
+                        this.stateManager.save();
+                        loadModal.close();
+                        this.modal.close();
+                        this.show(); // Refresh editor inputs with newly loaded colors
+                    } catch (e) {
+                        alert(`Error loading theme: ${e.message}`);
+                    }
                 };
-                listContainer.appendChild(item);
+                list.appendChild(item);
             };
 
             if (userThemes.length > 0) {
-                const header = document.createElement('div');
-                header.className = 'thought-bubble-theme-header';
-                header.textContent = 'Your Themes';
-                listContainer.appendChild(header);
-                userThemes.forEach(createItem);
+                const header = document.createElement("div");
+                header.className = "thought-bubble-theme-header";
+                header.textContent = "Your Themes";
+                list.appendChild(header);
+                userThemes.forEach(f => addItem(f, false));
             }
 
             if (defaultThemes.length > 0) {
-                if (userThemes.length > 0) {
-                    listContainer.appendChild(document.createElement('hr'));
-                }
-                const header = document.createElement('div');
-                header.className = 'thought-bubble-theme-header';
-                header.textContent = 'Default Themes';
-                listContainer.appendChild(header);
-                defaultThemes.forEach(createItem);
+                const header = document.createElement("div");
+                header.className = "thought-bubble-theme-header";
+                header.textContent = "Default Themes";
+                list.appendChild(header);
+                defaultThemes.forEach(f => addItem(f, true));
             }
 
             if (userThemes.length === 0 && defaultThemes.length === 0) {
-                listContainer.textContent = "No themes found. Save a theme to get started!";
+                list.textContent = "No saved or built-in themes found.";
             }
 
-            loadModal.show('Load Theme', listContainer);
-
-        } catch (error) {
-            console.error("Failed to load themes:", error);
-            alert(`Error: ${error.message}`);
+            loadModal.show("Load Theme", container);
+        } catch (err) {
+            console.error("Theme list error:", err);
+            alert(`Error loading themes: ${err.message}`);
         }
     }
 
     async handleSetDefault() {
-        const themeToSave = this.stateManager.state.theme;
         try {
-            const response = await fetch('/thoughtbubble/themes/default/set', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(themeToSave),
+            const response = await fetch("/thoughtbubble/themes/default/set", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(this.stateManager.state.theme || {}),
             });
-            if (!response.ok) throw new Error('Failed to set default theme.');
-            alert("Current theme set as default for new nodes.");
-        } catch (error) {
-            console.error("Failed to set default theme:", error);
-            alert(`Error: ${error.message}`);
+
+            if (!response.ok) throw new Error("Failed to set default theme.");
+            alert("Current theme set as default for new nodes!");
+        } catch (err) {
+            console.error("Set default theme error:", err);
+            alert(`Error setting default theme: ${err.message}`);
         }
     }
 }
